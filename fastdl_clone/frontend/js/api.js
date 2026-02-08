@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:3001";
+const API_BASE = "http://72.62.228.105:3001";
 
 async function _downloadMedia(url) {
     const res = await fetch(`${API_BASE}/api/download`, {

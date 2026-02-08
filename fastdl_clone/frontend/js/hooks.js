@@ -218,7 +218,7 @@ async function downloadAllAsZip(url) {
     try {
         console.log("📦 Downloading all as ZIP:", url);
         // Fixed port to 3001
-        const res = await fetch("http://localhost:3001/api/download", {
+        const res = await fetch("http://72.62.228.105:3001/api/download", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
