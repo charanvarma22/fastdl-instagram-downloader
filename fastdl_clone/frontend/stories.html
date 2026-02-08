@@ -11,25 +11,32 @@
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/responsive.css">
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+    <style>
+        .tabs a {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
 </head>
 
 <body>
 
     <header>
-        <div class="brand">
-            <a href="/" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 10px;">
-                <img src="assets/logo.svg" height="32"> Instaminsta
-            </a>
-        </div>
-        <div>
-            <a href="/" style="margin-right: 15px; text-decoration: none; color: inherit;">Home</a>
-            <a href="/reels.html" style="margin-right: 15px; text-decoration: none; color: inherit;">Reels</a>
-            <a href="/photos.html" style="margin-right: 15px; text-decoration: none; color: inherit;">Photos</a>
-            <a href="/stories.html" style="text-decoration: none; color: inherit; font-weight: bold;">Stories</a>
-        </div>
+        <div class="brand"><img src="assets/logo.svg" height="32"> Instaminsta</div>
+        <div>FAQ · EN</div>
     </header>
 
     <section class="hero">
+        <div class="tabs">
+            <a href="/" class="tab">Video</a>
+            <a href="/photos.html" class="tab">Photo</a>
+            <a href="/reels.html" class="tab">Reels</a>
+            <a href="/stories.html" class="tab active">Story</a>
+            <a href="/" class="tab">IGTV</a>
+            <a href="/" class="tab">Carousel</a>
+        </div>
+
         <h1 id="title">Instagram Story Downloader</h1>
         <div class="subtitle" id="subtitle">Watch & Download Stories Anonymously</div>
 
@@ -39,13 +46,7 @@
             <button class="download" id="downloadBtn">Download</button>
         </div>
 
-        <img src="assets/logo.svg" class="center-logo" style="margin-top: 40px; opacity: 0.2;">
-    </section>
-
-    <section class="search-result-section" id="searchResultSection" style="display:none;">
-        <h2>Search result</h2>
-        <div class="search-grid" id="searchGrid"></div>
-        <div id="downloadAllContainer"></div>
+        <img src="assets/logo.svg" class="center-logo">
     </section>
 
     <section class="how-section">
@@ -75,6 +76,27 @@
         </div>
     </section>
 
+    <section class="search-result-section" id="searchResultSection" style="display:none;">
+        <h2>Search result</h2>
+        <div class="search-grid" id="searchGrid"></div>
+        <div id="downloadAllContainer"></div>
+    </section>
+
+    <section class="faq-section">
+        <div class="faq-item">
+            <button class="faq-question">Is it free?</button>
+            <div class="faq-answer">Yes, Instaminsta is completely free.</div>
+        </div>
+        <div class="faq-item">
+            <button class="faq-question">Login required?</button>
+            <div class="faq-answer">No login is needed.</div>
+        </div>
+        <div class="faq-item">
+            <button class="faq-question">Is it safe?</button>
+            <div class="faq-answer">We do not store user data.</div>
+        </div>
+    </section>
+
     <footer class="footer">© 2026 Instaminsta</footer>
 
     <div id="mediaModal" class="media-modal" style="display:none;">
@@ -88,6 +110,7 @@
     <script src="js/clipboard.js"></script>
     <script src="js/scroll.js"></script>
     <script src="js/hooks.js"></script>
+    <script src="js/faq.js"></script>
     <script src="js/preview.js"></script>
 </body>
 
