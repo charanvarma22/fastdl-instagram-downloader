@@ -15,15 +15,17 @@ echo " Project Dir: $PROJECT_DIR"
 # Create the Nginx Configuration
 cat <<EOF > /etc/nginx/sites-available/instaminsta
 server {
-    listen 80;
-    server_name $VPS_IP;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    
+    server_name 72.62.228.105 $VPS_IP _;
 
     root /var/www/html;
     index index.php index.html index.htm;
 
     # 1. Main App (Frontend)
     location / {
-        proxy_pass http://localhost:8081;
+        proxy_pass http://127.0.0.1:8081;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -49,7 +51,7 @@ server {
 
     # 3. API Proxy (Backend)
     location /api {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://127.0.0.1:3001;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }
