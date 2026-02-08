@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Instaminsta</title>
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/reset.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+
+<body>
+
+    <header>
+        <div class="brand"><img src="assets/logo.svg" height="32"> Instaminsta</div>
+        <div>FAQ · EN</div>
+    </header>
+
+    <section class="hero">
+        <div class="tabs">
+            <div class="tab active" data-type="video">Video</div>
+            <div class="tab" data-type="photo">Photo</div>
+            <div class="tab" data-type="reels">Reels</div>
+            <div class="tab" data-type="story">Story</div>
+            <div class="tab" data-type="igtv">IGTV</div>
+            <div class="tab" data-type="carousel">Carousel</div>
+            <div class="tab" data-type="viewer">Viewer</div>
+        </div>
+
+        <h1 id="title">Instagram Stories Viewer</h1>
+        <div class="subtitle" id="subtitle">Anonymously Instagram Story Viewer</div>
+
+        <div class="input-box">
+            <input id="url" placeholder="Insert instagram link here">
+            <button class="paste" id="pasteBtn">Paste</button>
+            <button class="download" id="downloadBtn">Download</button>
+        </div>
+
+        <img src="assets/logo.svg" class="center-logo">
+    </section>
+
+    <section class="how-section">
+        <h2>How to use Instagram Story Viewer?</h2>
+        <div class="card-row">
+            <div class="how-card">
+                <svg class="icon">
+                    <use href="assets/icons.svg#copy" />
+                </svg>
+                <h3>Copy the URL</h3>
+                <p>Copy Instagram story or post link.</p>
+            </div>
+            <div class="how-card">
+                <svg class="icon">
+                    <use href="assets/icons.svg#paste" />
+                </svg>
+                <h3>Paste the link</h3>
+                <p>Paste it in the box above.</p>
+            </div>
+            <div class="how-card">
+                <svg class="icon">
+                    <use href="assets/icons.svg#download" />
+                </svg>
+                <h3>View & Download</h3>
+                <p>Click download to save.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="search-result-section" id="searchResultSection" style="display:none;">
+        <h2>Search result</h2>
+        <div class="search-grid" id="searchGrid"></div>
+        <div id="downloadAllContainer"></div>
+    </section>
+
+    <!-- Media Modal for zoom/play -->
+    <div id="mediaModal" class="media-modal" style="display:none;">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="modalMediaContainer"></div>
+        </div>
+    </div>
+
+    <section class="faq-section">
+        <h2>Frequently Asked Questions</h2>
+
+        <div class="faq-item">
+            <button class="faq-question">Is it free?</button>
+            <div class="faq-answer">Yes, Instaminsta is completely free.</div>
+        </div>
+        <div class="faq-item">
+            <button class="faq-question">Login required?</button>
+            <div class="faq-answer">No login is needed.</div>
+        </div>
+        <div class="faq-item">
+            <button class="faq-question">Is it safe?</button>
+            <div class="faq-answer">We do not store user data.</div>
+        </div>
+    </section>
+
+    <footer class="footer">© 2026 Instaminsta</footer>
+
+    <script src="js/api.js"></script>
+    <script type="module" src="js/tabs.js"></script>
+    <script src="js/clipboard.js"></script>
+    <script src="js/scroll.js"></script>
+    <script src="js/hooks.js"></script>
+    <script src="js/faq.js"></script>
+    <script src="js/preview.js"></script>
+</body>
+
+</html>

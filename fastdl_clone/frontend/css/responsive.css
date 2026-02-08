@@ -1,0 +1,13 @@
+@media(max-width:768px) {
+    .input-box {
+        width: 92%
+    }
+
+    .tabs {
+        overflow-x: auto
+    }
+
+    h1 {
+        font-size: 32px
+    }
+}
