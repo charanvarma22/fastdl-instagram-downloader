@@ -12,6 +12,11 @@ echo " Detected IP: $VPS_IP"
 echo " Detected PHP: $PHP_VERSION"
 echo " Project Dir: $PROJECT_DIR"
 
+# Nuclear Cleanup: Remove ALL other enabled sites to avoid conflicts
+echo "🧹 Cleaning up old Nginx configurations..."
+rm -vf /etc/nginx/sites-enabled/*
+rm -vf /etc/nginx/conf.d/*
+
 # Create the Nginx Configuration
 cat <<EOF > /etc/nginx/sites-available/instaminsta
 server {
