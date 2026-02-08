@@ -1,133 +1,105 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instagram Reels Downloader - Download Reels Video Online (Fast & Free)</title>
-    <meta name="description" content="Best Instagram Reels Downloader to save Reels videos in high quality MP4. Download Instagram Reels online for free, fast and secure. No login required.">
-    <meta name="keywords" content="instagram reels downloader, download instagram reels, save reels video, instagram video download, ig reels saver"> 
-    
-    <!-- Reuse existing styles -->
-    <link rel="stylesheet" href="css/reset.css">
+    <title>Instagram Reels Downloader - Instaminsta</title>
     <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/reset.css">
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/responsive.css">
-    
-    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 </head>
+
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header class="main-header">
-            <div class="logo-container">
-                <a href="/" style="text-decoration: none; display: flex; align-items: center; gap: 12px;">
-                    <div class="logo-icon">
-                        <img src="assets/logo.svg" alt="Instaminsta Logo">
-                    </div>
-                    <span class="logo-text">Instaminsta</span>
-                </a>
+
+    <header>
+        <div class="brand">
+            <a href="/" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 10px;">
+                <img src="assets/logo.svg" height="32"> Instaminsta
+            </a>
+        </div>
+        <div>
+            <a href="/" style="margin-right: 15px; text-decoration: none; color: inherit;">Home</a>
+            <a href="/reels.html"
+                style="margin-right: 15px; text-decoration: none; color: inherit; font-weight: bold;">Reels</a>
+            <a href="/photos.html" style="margin-right: 15px; text-decoration: none; color: inherit;">Photos</a>
+            <a href="/stories.html" style="text-decoration: none; color: inherit;">Stories</a>
+        </div>
+    </header>
+
+    <section class="hero">
+        <h1 id="title">Instagram Reels Downloader</h1>
+        <div class="subtitle" id="subtitle">Download Instagram Reels videos in high quality (1080p, 4K)</div>
+
+        <div class="input-box">
+            <input id="url" placeholder="Paste Instagram Reel link here...">
+            <button class="paste" id="pasteBtn">Paste</button>
+            <button class="download" id="downloadBtn">Download</button>
+        </div>
+
+        <img src="assets/logo.svg" class="center-logo" style="margin-top: 40px; opacity: 0.2;">
+    </section>
+
+    <section class="search-result-section" id="searchResultSection" style="display:none;">
+        <h2>Search result</h2>
+        <div class="search-grid" id="searchGrid"></div>
+        <div id="downloadAllContainer"></div>
+    </section>
+
+    <section class="how-section">
+        <h2>How to Download Instagram Reels?</h2>
+        <div class="card-row">
+            <div class="how-card">
+                <svg class="icon">
+                    <use href="assets/icons.svg#copy" />
+                </svg>
+                <h3>Copy the Link</h3>
+                <p>Open the Reel and copy its link.</p>
             </div>
-            
-            <nav class="main-nav">
-                <a href="/" class="nav-link">Home</a>
-                <a href="/reels.html" class="nav-link active">Reels</a>
-                <a href="/photos.html" class="nav-link">Photos</a>
-                <a href="/stories.html" class="nav-link">Stories</a>
-            </nav>
-
-            <button class="menu-toggle" aria-label="Menu">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
-        </header>
-
-        <!-- Main Content -->
-        <main class="main-content">
-            <div class="hero-section">
-                <!-- Dynamic Text -->
-                <h1 class="hero-title">Instagram Reels Downloader</h1>
-                <p class="hero-subtitle">Download Instagram Reels videos in high quality (1080p, 4K) directly to your gallery.</p>
-
-                <!-- Input Area -->
-                <div class="input-container">
-                    <div class="input-wrapper">
-                        <div class="input-icon">
-                            <svg viewBox="0 0 24 24" class="link-icon"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"></path></svg>
-                        </div>
-                        <input type="text" id="url" class="main-input" placeholder="Paste Instagram Reel link here..." autocomplete="off">
-                        <div class="paste-btn-wrapper">
-                            <button class="paste-btn" id="pasteBtn">
-                                <svg viewBox="0 0 24 24" class="clipboard-icon"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"></path></svg>
-                                <span>Paste</span>
-                            </button>
-                        </div>
-                    </div>
-                    <button class="download-btn-main" id="downloadBtn">
-                        <span>Download</span>
-                        <svg viewBox="0 0 24 24" class="download-icon"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
-                    </button>
-                </div>
+            <div class="how-card">
+                <svg class="icon">
+                    <use href="assets/icons.svg#paste" />
+                </svg>
+                <h3>Paste the Link</h3>
+                <p>Paste it in the box above.</p>
             </div>
-
-            <!-- Search Result Section (Hidden by default) -->
-            <div id="searchResultSection" class="search-result-section" style="display: none;">
-                <h2 class="section-title">Result</h2>
-                <div class="result-card">
-                    <div class="grid-container" id="searchGrid">
-                        <!-- Content injected by JS -->
-                    </div>
-                </div>
+            <div class="how-card">
+                <svg class="icon">
+                    <use href="assets/icons.svg#download" />
+                </svg>
+                <h3>Download</h3>
+                <p>Save the video to your gallery.</p>
             </div>
+        </div>
+    </section>
 
-            <!-- SEO Content Section -->
-            <article class="seo-content" style="max-width: 800px; margin: 60px auto; color: var(--text-secondary); line-height: 1.6;">
-                <h2>How to Download Instagram Reels?</h2>
-                <ol style="padding-left: 20px; margin-bottom: 30px;">
-                    <li>Open Instagram and go to the Reel you want to save.</li>
-                    <li>Tap the three dots (...) and select <b>Copy Link</b>.</li>
-                    <li>Paste the link into the input box above and click <b>Download</b>.</li>
-                    <li>Wait for the video to appear, then save it to your device.</li>
-                </ol>
+    <section class="faq-section">
+        <div class="container" style="text-align: left;">
+            <h2>Features & FAQ</h2>
+            <p><strong>Is it free?</strong> Yes, unlimited downloads.</p>
+            <p><strong>High Quality?</strong> We save the original quality (HD/4K).</p>
+            <p><strong>No Watermark?</strong> Clean videos without logos.</p>
+        </div>
+    </section>
 
-                <h2>Features</h2>
-                <ul style="padding-left: 20px;">
-                    <li><b>High Quality:</b> Save Reels in original resolution (HD, 1080p).</li>
-                    <li><b>No Watermark:</b> Clean downloads without logos.</li>
-                    <li><b>Free Forever:</b> No limits on downloads.</li>
-                </ul>
-            </article>
+    <footer class="footer">© 2026 Instaminsta</footer>
 
-        </main>
-
-        <!-- Footer -->
-        <footer class="main-footer">
-            <div class="footer-content">
-                <div class="copyright">© 2026 Instaminsta. All rights reserved.</div>
-                <div class="footer-links">
-                    <a href="/terms.html">Terms of Service</a>
-                    <a href="/privacy.html">Privacy Policy</a>
-                    <a href="/contact.html">Contact</a>
-                </div>
-            </div>
-        </footer>
-    </div>
-
-    <!-- Modals -->
-    <div id="mediaModal" class="modal-overlay">
+    <!-- Media Modal -->
+    <div id="mediaModal" class="media-modal" style="display:none;">
         <div class="modal-content">
-            <button class="modal-close">&times;</button>
-            <div id="modalMediaContainer" class="modal-media-container"></div>
+            <span class="modal-close">&times;</span>
+            <div id="modalMediaContainer"></div>
         </div>
     </div>
 
-    <!-- Scripts -->
     <script src="js/api.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/preview.js"></script>
     <script src="js/clipboard.js"></script>
+    <script src="js/scroll.js"></script>
     <script src="js/hooks.js"></script>
+    <script src="js/preview.js"></script>
 </body>
+
 </html>
