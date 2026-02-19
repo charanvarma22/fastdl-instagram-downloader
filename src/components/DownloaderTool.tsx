@@ -1,179 +1,149 @@
-
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { api, MediaItem } from '../services/api';
-import { TOOL_TABS } from '../constants';
+import { api, PreviewResponse } from '../services/api';
+import { Loader2, Download, AlertCircle, Video, Image as ImageIcon, Layers } from 'lucide-react';
 
-interface Props {
-  title: string;
-  description: string;
+interface DownloaderToolProps {
+    title?: string;
+    description?: string;
 }
 
-const DownloaderTool: React.FC<Props> = ({ title, description }) => {
-  const [url, setUrl] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<MediaItem | null>(null);
-  const [error, setError] = useState('');
-  const [aiInfo, setAiInfo] = useState('');
+const DownloaderTool: React.FC<DownloaderToolProps> = ({
+    title = "Instagram Downloader",
+    description = "Download Video, Reels, Photo, Story, IGTV"
+}) => {
+    const [url, setUrl] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [data, setData] = useState<PreviewResponse | null>(null);
+    const [downloading, setDownloading] = useState(false);
 
-  const navigate = useNavigate();
-  const location = useLocation();
+    const handlePreview = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!url) return;
 
-  const handleDownload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url || !url.includes('instagram.com')) {
-      setError('Please enter a valid Instagram URL');
-      return;
-    }
+        setLoading(true);
+        setError(null);
+        setData(null);
 
-    setError('');
-    setLoading(true);
-    setResult(null);
-    setAiInfo('');
+        try {
+            const result = await api.getPreview(url);
+            setData(result);
+        } catch (err: any) {
+            console.error("Preview error:", err);
+            setError(err.message || 'Unknown error occurred - please try another link');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    try {
-      const data = await api.getPreview(url);
-      if (data.items && data.items.length > 0) {
-        // For now, just display the first item. 
-        // Future improvement: Support carousel UI
-        const item = data.items[0];
-        setResult(item);
-        setAiInfo("Ready to download your content!");
-      } else {
-        setError("No media found on this link.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Something went wrong. Please check the link and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const handleDownload = async (mediaUrl: string, index?: number) => {
+        try {
+            setDownloading(true);
+            // api.downloadMedia handles trigger logic
+            await api.downloadMedia(url, index);
+        } catch (err: any) {
+            console.error("Download error:", err);
+            // Fallback to direct link if proxy fails?
+            // window.open(mediaUrl, '_blank'); 
+            setError(err.message || 'Download failed');
+        } finally {
+            setDownloading(false);
+        }
+    };
 
-  const executeDownload = async () => {
-    if (!result) return;
-    try {
-      await api.downloadMedia(url); // Use original URL
-    } catch (err) {
-      console.error("Download failed", err);
-      alert("Download failed. Please try again.");
-    }
-  };
+    const handlePaste = async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            setUrl(text);
+        } catch (err) {
+            console.error('Failed to read clipboard', err);
+        }
+    };
 
-  return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-16 md:py-24 text-center">
-      <div className="mb-8">
-        <h1 className="text-4xl md:text-7xl font-black mb-6 tracking-tight text-white">
-          Instagram <span className="hero-text-gradient">{title}</span> Downloader
-        </h1>
-        <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">
-          {description}
-        </p>
-      </div>
-
-      <div className="max-w-3xl mx-auto mb-16">
-        {/* Tool Selector Tabs - FastDL Style */}
-        <div className="flex flex-wrap justify-center gap-2 mb-6 p-1 bg-slate-900/50 rounded-2xl border border-slate-800 backdrop-blur">
-          {TOOL_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => navigate(tab.path)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${location.pathname === tab.path
-                  ? 'bg-slate-700 text-white shadow-lg'
-                  : 'text-slate-500 hover:text-white hover:bg-slate-800'
-                }`}
-            >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={handleDownload} className="relative group">
-          <div className="flex flex-col md:flex-row items-stretch gap-0 p-1.5 bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-3xl border border-slate-800 focus-within:border-pink-500/30 focus-within:ring-8 focus-within:ring-pink-500/5 transition-all">
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Paste Instagram link here..."
-              className="flex-grow px-8 py-6 bg-transparent text-white focus:outline-none text-xl placeholder-slate-500 font-medium"
-            />
-            <button
-              type="submit"
-              disabled={loading || !url}
-              className="bg-white text-slate-950 px-12 py-5 md:m-1.5 rounded-2xl font-black text-xl hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed min-w-[200px]"
-            >
-              {loading ? (
-                <svg className="animate-spin h-7 w-7 text-slate-900" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  Download
-                </span>
-              )}
-            </button>
-          </div>
-          {error && <p className="text-red-400 mt-4 text-sm font-bold">{error}</p>}
-        </form>
-        <p className="mt-4 text-slate-500 text-xs font-medium">
-          By using our service you accept our <a href="#" className="underline hover:text-slate-300">Terms of Service</a> and <a href="#" className="underline hover:text-slate-300">Privacy Policy</a>.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap justify-center gap-12 text-center max-w-4xl mx-auto opacity-60">
-        <div className="flex flex-col items-center">
-          <svg className="w-8 h-8 mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Secure</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <svg className="w-8 h-8 mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">No Login</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <svg className="w-8 h-8 mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Fast</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <svg className="w-8 h-8 mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /></svg>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">HD Quality</span>
-        </div>
-      </div>
-
-      {result && (
-        <div className="mt-16 bg-slate-900/60 rounded-[3rem] shadow-4xl overflow-hidden border border-slate-800 text-left backdrop-blur-xl animate-in zoom-in-95 duration-500">
-          <div className="md:flex">
-            <div className="md:w-1/2 p-3">
-              <img src={result.thumbnail} alt="Preview" className="w-full h-[450px] object-cover rounded-[2.5rem] shadow-2xl" />
+    return (
+        <div className="w-full max-w-4xl mx-auto px-4 py-12">
+            <div className="text-center mb-10">
+                <h1 className="text-4xl md:text-6xl font-black text-white mb-6 tracking-tight">
+                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500">
+                        {title}
+                    </span>
+                </h1>
+                <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto font-medium">
+                    {description}
+                </p>
             </div>
-            <div className="md:w-1/2 p-10 flex flex-col justify-center">
-              <div className="flex items-center gap-2 mb-6">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-green-500 font-black text-xs uppercase tracking-widest">Server Processing Complete</span>
-              </div>
-              <h3 className="text-4xl font-black mb-6 text-white leading-tight">Your Media is Ready</h3>
-              <p className="text-slate-400 leading-relaxed mb-10 font-medium text-lg">
-                {aiInfo || "We have successfully fetched your Instagram media in original high-definition quality. Click the button below to start your direct download."}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button
-                  onClick={executeDownload}
-                  className="flex-grow bg-white text-slate-950 py-6 rounded-2xl font-black text-xl hover:bg-slate-200 transition-all active:scale-95 shadow-2xl shadow-white/10"
-                >
-                  Download HD Now
-                </button>
-                <button className="p-6 bg-slate-800 text-white rounded-2xl hover:bg-slate-700 transition-all border border-slate-700">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                </button>
-              </div>
+
+            <div className="bg-slate-900/50 p-6 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-sm">
+                <form onSubmit={handlePreview} className="relative flex items-center">
+                    <div className="absolute left-6 text-slate-500 hidden md:block">
+                        <Layers className="w-6 h-6" />
+                    </div>
+                    <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="Paste Instagram link here..."
+                        className="w-full bg-transparent text-white placeholder-slate-500 pl-4 md:pl-16 pr-32 py-4 rounded-[1.5rem] focus:outline-none focus:ring-2 focus:ring-pink-500/50 text-lg font-medium border border-slate-700 focus:border-pink-500"
+                    />
+                    <div className="absolute right-2 flex gap-2">
+                        <button
+                            type="button"
+                            onClick={handlePaste}
+                            className="bg-slate-800 text-slate-300 px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-700 transition-colors hidden md:block"
+                        >
+                            PASTE
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={loading || !url}
+                            className="bg-gradient-to-r from-pink-600 to-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Start'}
+                        </button>
+                    </div>
+                </form>
             </div>
-          </div>
+
+            {error && (
+                <div className="mt-8 bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-2xl flex items-center justify-center gap-2 font-medium animate-in fade-in slide-in-from-top-4">
+                    <AlertCircle className="w-5 h-5" />
+                    {error}
+                </div>
+            )}
+
+            {data && data.items && (
+                <div className="mt-12 animate-in fade-in slide-in-from-bottom-8">
+                    <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                        {data.items.map((item, idx) => (
+                            <div key={idx} className="bg-slate-900/40 rounded-3xl overflow-hidden border border-slate-800 group hover:border-pink-500/30 transition-all flex flex-col">
+                                <div className="relative aspect-[4/5] bg-slate-950">
+                                    <img
+                                        src={item.thumbnail}
+                                        alt="Thumbnail"
+                                        className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white flex items-center gap-1">
+                                        {item.type === 'video' ? <Video className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                        {item.type ? item.type.toUpperCase() : 'MEDIA'}
+                                    </div>
+                                </div>
+                                <div className="p-6 mt-auto">
+                                    <button
+                                        onClick={() => handleDownload(item.mediaUrl, idx)}
+                                        disabled={downloading}
+                                        className="w-full bg-white text-slate-900 py-4 rounded-2xl font-black hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                                        Download {item.type === 'video' ? 'Video' : 'Photo'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default DownloaderTool;

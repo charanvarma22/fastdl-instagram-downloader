@@ -1,0 +1,68 @@
+{"level":"info","message":"\n╔════════════════════════════════════════════╗\n║   INSTAMINSTA BLOG API SERVER STARTED     ║\n╠════════════════════════════════════════════╣\n║  Environment: production                    ║\n║  Port:        3000                          ║\n║  URL:         https://instaminsta.com       ║\n║  Time:        2026-02-13T17:06:43.131Z      ║\n╚════════════════════════════════════════════╝\n  ","timestamp":"2026-02-13T17:06:43.131Z"}
+{"level":"info","message":"API Endpoints:","timestamp":"2026-02-13T17:06:43.134Z"}
+{"level":"info","message":"  POST /api/blog/publish","timestamp":"2026-02-13T17:06:43.134Z"}
+{"level":"info","message":"  GET  /api/sitemap/update","timestamp":"2026-02-13T17:06:43.135Z"}
+{"level":"info","message":"  GET  /api/blog/stats","timestamp":"2026-02-13T17:06:43.136Z"}
+{"level":"info","message":"  GET  /api/blog/health","timestamp":"2026-02-13T17:06:43.137Z"}
+{"level":"info","message":"  GET  /health","timestamp":"2026-02-13T17:06:43.137Z"}
+{"level":"info","message":"  GET  /sitemap.xml","timestamp":"2026-02-13T17:06:43.137Z"}
+{"level":"info","message":"  GET  /robots.txt","timestamp":"2026-02-13T17:06:43.138Z"}
+{"level":"info","message":"\n╔════════════════════════════════════════════╗\n║   INSTAMINSTA BLOG API SERVER STARTED     ║\n╠════════════════════════════════════════════╣\n║  Environment: production                    ║\n║  Port:        3000                          ║\n║  URL:         https://instaminsta.com       ║\n║  Time:        2026-02-13T17:10:38.387Z      ║\n╚════════════════════════════════════════════╝\n  ","timestamp":"2026-02-13T17:10:38.394Z"}
+{"level":"info","message":"API Endpoints:","timestamp":"2026-02-13T17:10:38.399Z"}
+{"level":"info","message":"  POST /api/blog/publish","timestamp":"2026-02-13T17:10:38.400Z"}
+{"level":"info","message":"  GET  /api/sitemap/update","timestamp":"2026-02-13T17:10:38.400Z"}
+{"level":"info","message":"  GET  /api/blog/stats","timestamp":"2026-02-13T17:10:38.401Z"}
+{"level":"info","message":"  GET  /api/blog/health","timestamp":"2026-02-13T17:10:38.401Z"}
+{"level":"info","message":"  GET  /health","timestamp":"2026-02-13T17:10:38.401Z"}
+{"level":"info","message":"  GET  /sitemap.xml","timestamp":"2026-02-13T17:10:38.401Z"}
+{"level":"info","message":"  GET  /robots.txt","timestamp":"2026-02-13T17:10:38.402Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:13:05 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:13:05.061Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:13:05 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:13:05.076Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:13:05 +0000] \"GET /favicon.ico HTTP/1.1\" 404 68 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:13:05.306Z"}
+{"level":"info","message":"\n╔════════════════════════════════════════════╗\n║   INSTAMINSTA BLOG API SERVER STARTED     ║\n╠════════════════════════════════════════════╣\n║  Environment: production                    ║\n║  Port:        3000                          ║\n║  URL:         https://instaminsta.com       ║\n║  Time:        2026-02-13T17:15:13.484Z      ║\n╚════════════════════════════════════════════╝\n  ","timestamp":"2026-02-13T17:15:13.485Z"}
+{"level":"info","message":"API Endpoints:","timestamp":"2026-02-13T17:15:13.489Z"}
+{"level":"info","message":"  POST /api/blog/publish","timestamp":"2026-02-13T17:15:13.490Z"}
+{"level":"info","message":"  GET  /api/sitemap/update","timestamp":"2026-02-13T17:15:13.490Z"}
+{"level":"info","message":"  GET  /api/blog/stats","timestamp":"2026-02-13T17:15:13.491Z"}
+{"level":"info","message":"  GET  /api/blog/health","timestamp":"2026-02-13T17:15:13.491Z"}
+{"level":"info","message":"  GET  /health","timestamp":"2026-02-13T17:15:13.491Z"}
+{"level":"info","message":"  GET  /sitemap.xml","timestamp":"2026-02-13T17:15:13.492Z"}
+{"level":"info","message":"  GET  /robots.txt","timestamp":"2026-02-13T17:15:13.492Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:16:06 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:16:06.735Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:16:07 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:16:07.642Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:16:07 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:16:07.770Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:16:07 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:16:07.978Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:16:08 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:16:08.211Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:18:33 +0000] \"GET /health HTTP/1.1\" 200 107 \"-\" \"Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.22621.6133\"","timestamp":"2026-02-13T17:18:33.431Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:18:57 +0000] \"GET /health HTTP/1.1\" 200 107 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:18:57.135Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:18:57 +0000] \"GET /health HTTP/1.1\" 200 107 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:18:57.154Z"}
+{"level":"info","message":"\n╔════════════════════════════════════════════╗\n║   INSTAMINSTA BLOG API SERVER STARTED     ║\n╠════════════════════════════════════════════╣\n║  Environment: production                    ║\n║  Port:        3000                          ║\n║  URL:         https://instaminsta.com       ║\n║  Time:        2026-02-13T17:22:50.029Z      ║\n╚════════════════════════════════════════════╝\n  ","timestamp":"2026-02-13T17:22:50.052Z"}
+{"level":"info","message":"API Endpoints:","timestamp":"2026-02-13T17:22:50.083Z"}
+{"level":"info","message":"  POST /api/blog/publish","timestamp":"2026-02-13T17:22:50.085Z"}
+{"level":"info","message":"  GET  /api/sitemap/update","timestamp":"2026-02-13T17:22:50.087Z"}
+{"level":"info","message":"  GET  /api/blog/stats","timestamp":"2026-02-13T17:22:50.089Z"}
+{"level":"info","message":"  GET  /api/blog/health","timestamp":"2026-02-13T17:22:50.090Z"}
+{"level":"info","message":"  GET  /health","timestamp":"2026-02-13T17:22:50.092Z"}
+{"level":"info","message":"  GET  /sitemap.xml","timestamp":"2026-02-13T17:22:50.093Z"}
+{"level":"info","message":"  GET  /robots.txt","timestamp":"2026-02-13T17:22:50.093Z"}
+{"level":"info","message":"\n╔════════════════════════════════════════════╗\n║   INSTAMINSTA BLOG API SERVER STARTED     ║\n╠════════════════════════════════════════════╣\n║  Environment: production                    ║\n║  Port:        3000                          ║\n║  URL:         https://instaminsta.com       ║\n║  Time:        2026-02-13T17:36:08.381Z      ║\n╚════════════════════════════════════════════╝\n  ","timestamp":"2026-02-13T17:36:08.383Z"}
+{"level":"info","message":"API Endpoints:","timestamp":"2026-02-13T17:36:08.400Z"}
+{"level":"info","message":"  POST /api/blog/publish","timestamp":"2026-02-13T17:36:08.412Z"}
+{"level":"info","message":"  GET  /api/sitemap/update","timestamp":"2026-02-13T17:36:08.418Z"}
+{"level":"info","message":"  GET  /api/blog/stats","timestamp":"2026-02-13T17:36:08.420Z"}
+{"level":"info","message":"  GET  /api/blog/health","timestamp":"2026-02-13T17:36:08.434Z"}
+{"level":"info","message":"  GET  /health","timestamp":"2026-02-13T17:36:08.443Z"}
+{"level":"info","message":"  GET  /sitemap.xml","timestamp":"2026-02-13T17:36:08.453Z"}
+{"level":"info","message":"  GET  /robots.txt","timestamp":"2026-02-13T17:36:08.459Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:36:59 +0000] \"GET /health HTTP/1.1\" 200 106 \"-\" \"Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.22621.6133\"","timestamp":"2026-02-13T17:36:59.506Z"}
+{"level":"info","message":"::1 - - [13/Feb/2026:17:40:03 +0000] \"GET / HTTP/1.1\" 404 57 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"","timestamp":"2026-02-13T17:40:03.851Z"}
+{"level":"info","message":"\n╔════════════════════════════════════════════╗\n║   INSTAMINSTA BLOG API SERVER STARTED     ║\n╠════════════════════════════════════════════╣\n║  Environment: production                    ║\n║  Port:        3000                          ║\n║  URL:         https://instaminsta.com       ║\n║  Time:        2026-02-18T15:30:18.818Z      ║\n╚════════════════════════════════════════════╝\n  ","timestamp":"2026-02-18T15:30:18.825Z"}
+{"level":"info","message":"API Endpoints:","timestamp":"2026-02-18T15:30:18.828Z"}
+{"level":"info","message":"  POST /api/blog/publish","timestamp":"2026-02-18T15:30:18.828Z"}
+{"level":"info","message":"  GET  /api/sitemap/update","timestamp":"2026-02-18T15:30:18.829Z"}
+{"level":"info","message":"  GET  /api/blog/stats","timestamp":"2026-02-18T15:30:18.829Z"}
+{"level":"info","message":"  GET  /api/blog/health","timestamp":"2026-02-18T15:30:18.829Z"}
+{"level":"info","message":"  GET  /health","timestamp":"2026-02-18T15:30:18.829Z"}
+{"level":"info","message":"  GET  /sitemap.xml","timestamp":"2026-02-18T15:30:18.830Z"}
+{"level":"info","message":"  GET  /robots.txt","timestamp":"2026-02-18T15:30:18.830Z"}
+{"level":"info","message":"SIGINT signal received: closing HTTP server","timestamp":"2026-02-18T15:30:19.343Z"}
