@@ -1,0 +1,698 @@
+{
+  "name": "SEO Blog Auto-Publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 {{ Math.floor(Math.random() * 3) + 8 }} * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily Random Time Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT keyword_id, keyword, category FROM seo_keywords WHERE status = 'pending' AND used = 0 ORDER BY priority DESC, RAND() LIMIT 1",
+        "options": {}
+      },
+      "id": "fetch-keyword",
+      "name": "Fetch Unused Keyword",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [470, 300],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.keyword }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-keyword-exists",
+      "name": "Keyword Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as count FROM blogs WHERE DATE(created_at) = CURDATE()",
+        "options": {}
+      },
+      "id": "check-daily-limit",
+      "name": "Check Daily Post Count",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [910, 200],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.count }}",
+              "operation": "smaller",
+              "value2": 3
+            }
+          ]
+        }
+      },
+      "id": "check-limit",
+      "name": "Under Daily Limit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT slug FROM blogs WHERE keyword = '{{ $('Fetch Unused Keyword').item.json.keyword }}' LIMIT 1",
+        "options": {}
+      },
+      "id": "check-duplicate-slug",
+      "name": "Check Duplicate Keyword",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [1350, 100],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.slug }}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "slug-not-exists",
+      "name": "Slug Not Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1570, 100]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "resource": "chat",
+        "operation": "create",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4o"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert SEO content writer. Create engaging, human-like blog posts that rank well on Google. Write in a conversational yet authoritative tone. Use short paragraphs, bullet points where helpful, and include a FAQ section. Avoid AI clichés like 'delve', 'landscape', 'tapestry', 'realm', 'unveiling', 'embarking'. Make it sound natural and authentic."
+            },
+            {
+              "role": "user",
+              "content": "Write a comprehensive 1200-1800 word SEO-optimized blog post about: {{ $('Fetch Unused Keyword').item.json.keyword }}\n\nCategory: {{ $('Fetch Unused Keyword').item.json.category }}\n\nRequirements:\n- 1200-1800 words\n- Conversational but authoritative tone\n- Short paragraphs (2-3 sentences max)\n- Use H2 and H3 headings strategically\n- Include 5-7 bullet points in a relevant section\n- Add a FAQ section with 4-5 questions at the end\n- Focus on providing real value and actionable insights\n- Write for humans first, search engines second\n- Use transition words naturally\n- Include statistics or data points where possible\n- End with a strong conclusion\n\nFormat the output as clean markdown with proper heading hierarchy.\n\nDo NOT use these overused AI phrases: delve, landscape, tapestry, realm, unveiling, embarking, dive into, game-changer, unlock, leverage (unless in proper context).\n\nMake it sound like it was written by a knowledgeable human, not an AI."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.85,
+          "maxTokens": 3000
+        }
+      },
+      "id": "generate-blog-openai",
+      "name": "Generate Blog Content (OpenAI)",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [1790, 0],
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "resource": "chat",
+        "operation": "create",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4o Mini"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a content humanizer. Your job is to rewrite AI-generated content to sound more natural, varied, and human-written while maintaining all the information and SEO value. Vary sentence structure, use more contractions, add personal touches, and make transitions more natural. Keep the same headings and structure but improve readability."
+            },
+            {
+              "role": "user",
+              "content": "Humanize and improve this blog post while keeping all headings, structure, and information intact. Make it sound less AI-generated:\n\n{{ $json.choices[0].message.content }}\n\nMake these improvements:\n- Vary sentence length and structure\n- Use more contractions (it's, we're, don't)\n- Add transitional phrases that sound natural\n- Replace any remaining AI clichés with authentic language\n- Make examples more specific and relatable\n- Keep all headings exactly as they are\n- Maintain the same word count (±100 words)\n\nReturn only the improved content in markdown format."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.75,
+          "maxTokens": 3000
+        }
+      },
+      "id": "humanize-content",
+      "name": "Humanize Content",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [2010, 0],
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.copyleaks.com/v3/education/submit/file/{{ Date.now() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "copyleaksApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.choices[0].message.content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "plagiarism-check",
+      "name": "Plagiarism Check (Copyleaks)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2230, 0],
+      "credentials": {
+        "copyleaksApi": {
+          "id": "3",
+          "name": "Copyleaks API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-plagiarism-result",
+      "name": "Wait for Plagiarism Result",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2450, 0],
+      "webhookId": "plagiarism-check-wait"
+    },
+    {
+      "parameters": {
+        "url": "https://api.copyleaks.com/v3/education/{{ $('Plagiarism Check (Copyleaks)').item.json.scanId }}/result",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "copyleaksApi",
+        "options": {}
+      },
+      "id": "get-plagiarism-result",
+      "name": "Get Plagiarism Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2670, 0],
+      "credentials": {
+        "copyleaksApi": {
+          "id": "3",
+          "name": "Copyleaks API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.aggregatedScore }}",
+              "operation": "smaller",
+              "value2": 10
+            }
+          ]
+        }
+      },
+      "id": "plagiarism-acceptable",
+      "name": "Plagiarism < 10%?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2890, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the humanized blog content\nconst blogContent = $('Humanize Content').item.json.choices[0].message.content;\nconst keyword = $('Fetch Unused Keyword').item.json.keyword;\nconst category = $('Fetch Unused Keyword').item.json.category;\n\n// Generate slug\nconst slug = keyword\n  .toLowerCase()\n  .replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-+|-+$/g, '');\n\n// Generate meta title (under 60 chars)\nconst metaTitle = keyword.split(' ')\n  .map(w => w.charAt(0).toUpperCase() + w.slice(1))\n  .join(' ') + ' | Instaminsta Guide';\n\n// Generate meta description (under 160 chars)\nconst firstParagraph = blogContent.split('\\n\\n')[1] || blogContent.split('\\n')[0];\nconst metaDescription = firstParagraph\n  .replace(/[#*]/g, '')\n  .substring(0, 155)\n  .trim() + '...';\n\n// Extract excerpt (first 200 chars)\nconst excerpt = blogContent\n  .replace(/^#+ .+$/gm, '')\n  .replace(/[*_]/g, '')\n  .trim()\n  .substring(0, 200)\n  .trim() + '...';\n\nreturn {\n  json: {\n    slug: slug,\n    title: keyword.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),\n    content: blogContent,\n    excerpt: excerpt,\n    meta_title: metaTitle.substring(0, 60),\n    meta_description: metaDescription.substring(0, 160),\n    keyword: keyword,\n    category: category,\n    status: 'published',\n    author_id: 1,\n    published_at: new Date().toISOString()\n  }\n};"
+            },
+      "id": "prepare-blog-data",
+      "name": "Prepare Blog Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3110, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT blog_id, title, slug FROM blogs WHERE status = 'published' ORDER BY RAND() LIMIT 5",
+        "options": {}
+      },
+      "id": "fetch-existing-blogs",
+      "name": "Fetch Existing Blogs for Links",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [3330, -100],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get blog content and existing blogs\nconst blogData = $('Prepare Blog Data').item.json;\nlet content = blogData.content;\nconst existingBlogs = $input.all();\n\n// Function to insert internal links\nfunction insertInternalLinks(text, links, maxLinks = 3) {\n  let modifiedText = text;\n  let linksInserted = 0;\n  \n  for (const blog of links) {\n    if (linksInserted >= maxLinks) break;\n    \n    // Find relevant keywords in the blog titles\n    const keywords = blog.title.toLowerCase().split(' ');\n    \n    for (const keyword of keywords) {\n      if (keyword.length < 4) continue; // Skip short words\n      \n      // Find first occurrence of keyword in content (case insensitive)\n      const regex = new RegExp(`\\\\b${keyword}\\\\b`, 'i');\n      const match = modifiedText.match(regex);\n      \n      if (match && linksInserted < maxLinks) {\n        const linkText = match[0];\n        const link = `[${linkText}](/blog/${blog.slug})`;\n        modifiedText = modifiedText.replace(regex, link);\n        linksInserted++;\n        break;\n      }\n    }\n  }\n  \n  return modifiedText;\n}\n\n// Insert 3 internal links\nconst contentWithLinks = insertInternalLinks(content, existingBlogs, 3);\n\nreturn {\n  json: {\n    ...blogData,\n    content: contentWithLinks\n  }\n};"
+      },
+      "id": "insert-internal-links",
+      "name": "Insert Internal Links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3550, -100]
+    },
+    {
+      "parameters": {
+        "url": "https://instaminsta.com/api/blog/publish",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "publish-to-api",
+      "name": "Publish to Node.js API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [3770, -100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4",
+          "name": "Blog API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.statusCode }}",
+              "value2": 201
+            }
+          ]
+        }
+      },
+      "id": "publish-success",
+      "name": "Publish Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [3990, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE seo_keywords SET used = 1, used_at = NOW() WHERE keyword_id = {{ $('Fetch Unused Keyword').item.json.keyword_id }}",
+        "options": {}
+      },
+      "id": "mark-keyword-used",
+      "name": "Mark Keyword as Used",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [4210, -200],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://instaminsta.com/api/sitemap/update",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "update-sitemap",
+      "name": "Update Sitemap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [4430, -200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4",
+          "name": "Blog API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "blog_publish_log",
+        "columns": "keyword, slug, status, error_message, created_at",
+        "values": "={{ $('Fetch Unused Keyword').item.json.keyword }}, {{ $('Prepare Blog Data').item.json.slug }}, 'success', NULL, NOW()",
+        "options": {}
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [4650, -200],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "blog_publish_log",
+        "columns": "keyword, slug, status, error_message, created_at",
+        "values": "={{ $('Fetch Unused Keyword').item.json.keyword }}, NULL, 'failed', 'Plagiarism check failed: {{ $('Get Plagiarism Result').item.json.aggregatedScore }}%', NOW()",
+        "options": {}
+      },
+      "id": "log-plagiarism-fail",
+      "name": "Log Plagiarism Failure",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [2890, 200],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "blog_publish_log",
+        "columns": "keyword, slug, status, error_message, created_at",
+        "values": "={{ $('Fetch Unused Keyword').item.json.keyword }}, {{ $('Prepare Blog Data').item.json.slug }}, 'failed', 'API publish failed', NOW()",
+        "options": {}
+      },
+      "id": "log-publish-fail",
+      "name": "Log Publish Failure",
+      "type": "n8n-nodes-base.mysql",
+      "typeVersion": 2.1,
+      "position": [3990, 100],
+      "credentials": {
+        "mysql": {
+          "id": "1",
+          "name": "MySQL - Instaminsta DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Random Time Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Unused Keyword",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Unused Keyword": {
+      "main": [
+        [
+          {
+            "node": "Keyword Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keyword Available?": {
+      "main": [
+        [
+          {
+            "node": "Check Daily Post Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Daily Post Count": {
+      "main": [
+        [
+          {
+            "node": "Under Daily Limit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Under Daily Limit?": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate Keyword",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate Keyword": {
+      "main": [
+        [
+          {
+            "node": "Slug Not Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slug Not Exists?": {
+      "main": [
+        [
+          {
+            "node": "Generate Blog Content (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Blog Content (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Humanize Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Humanize Content": {
+      "main": [
+        [
+          {
+            "node": "Plagiarism Check (Copyleaks)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plagiarism Check (Copyleaks)": {
+      "main": [
+        [
+          {
+            "node": "Wait for Plagiarism Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Plagiarism Result": {
+      "main": [
+        [
+          {
+            "node": "Get Plagiarism Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Plagiarism Result": {
+      "main": [
+        [
+          {
+            "node": "Plagiarism < 10%?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plagiarism < 10%?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Blog Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Plagiarism Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Blog Data": {
+      "main": [
+        [
+          {
+            "node": "Fetch Existing Blogs for Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Existing Blogs for Links": {
+      "main": [
+        [
+          {
+            "node": "Insert Internal Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Internal Links": {
+      "main": [
+        [
+          {
+            "node": "Publish to Node.js API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to Node.js API": {
+      "main": [
+        [
+          {
+            "node": "Publish Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Successful?": {
+      "main": [
+        [
+          {
+            "node": "Mark Keyword as Used",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Keyword as Used": {
+      "main": [
+        [
+          {
+            "node": "Update Sitemap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}
