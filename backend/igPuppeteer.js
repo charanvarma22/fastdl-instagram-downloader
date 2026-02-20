@@ -2,6 +2,10 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// Load env vars
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,10 +22,12 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-blink-features=AutomationControlled',
-                '--disable-dev-shm-usage'
+                '--disable-dev-shm-usage',
+                '--window-size=1280,800'
             ]
         });
         const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 800 });
 
         // essential: Set a real user agent
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -40,10 +46,45 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
             }
         }
 
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Wait a bit for potential JS execution
-        await new Promise(r => setTimeout(r, 2000));
+        // Wait for page to settle
+        await new Promise(r => setTimeout(r, 4000));
+
+        let content = await page.content();
+
+        // Detect login wall early
+        if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram") || page.url().includes("/accounts/login")) {
+            console.log("[Puppeteer] Login wall detected. Attempting automated login...");
+
+            if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
+                try {
+                    await attemptLogin(page, process.env.IG_USERNAME, process.env.IG_PASSWORD);
+                    // After login, go back to the media URL
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                    await new Promise(r => setTimeout(r, 4000));
+                    content = await page.content();
+                } catch (loginErr) {
+                    console.error("[Puppeteer] Automated login failed:", loginErr.message);
+                    throw loginErr;
+                }
+            } else {
+                throw new Error("LOGIN_REQUIRED_NO_CREDENTIALS");
+            }
+        }
+
+        // Try to bypass common blockers (Cookie banners, login popups)
+        try {
+            await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const allowAll = buttons.find(b => b.innerText.includes('Allow all cookies') || b.innerText.includes('Allow essential'));
+                if (allowAll) allowAll.click();
+
+                const notNow = buttons.find(b => b.innerText.includes('Not Now'));
+                if (notNow) notNow.click();
+            });
+            await new Promise(r => setTimeout(r, 1000));
+        } catch (e) { }
 
         // Extract deep JSON data
         const data = await page.evaluate(() => {
@@ -53,35 +94,43 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
             let mediaData = null;
 
             // 1. Check window.__additionalDataLoaded
-            if (window.__additionalDataLoaded) {
-                for (const key in window.__additionalDataLoaded) {
-                    if (window.__additionalDataLoaded[key]?.graphql?.shortcode_media) {
-                        mediaData = window.__additionalDataLoaded[key].graphql.shortcode_media;
-                        break;
+            try {
+                if (window.__additionalDataLoaded) {
+                    for (const key in window.__additionalDataLoaded) {
+                        const item = window.__additionalDataLoaded[key]?.graphql?.shortcode_media || window.__additionalDataLoaded[key]?.items?.[0];
+                        if (item) {
+                            mediaData = item;
+                            break;
+                        }
                     }
                 }
-            }
+            } catch (e) { }
 
             // 2. Check window._sharedData
             if (!mediaData && window._sharedData?.entry_data?.PostPage?.[0]?.graphql?.shortcode_media) {
                 mediaData = window._sharedData.entry_data.PostPage[0].graphql.shortcode_media;
             }
 
-            // 3. Scan script tags for JSON
+            // 3. Scan script tags for xdt_api JSON
             if (!mediaData) {
                 const scripts = Array.from(document.querySelectorAll('script'));
                 for (const s of scripts) {
-                    if (s.innerText.includes('xdt_api__v1__media__shortcode__web_info')) {
+                    if (s.innerText.includes('shortcode_media') || s.innerText.includes('xdt_api')) {
                         try {
-                            const match = s.innerText.match(/\{.*\}/);
-                            if (match) {
-                                const parsed = JSON.parse(match[0]);
-                                if (parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0]) {
-                                    mediaData = parsed.xdt_api__v1__media__shortcode__web_info.items[0];
+                            const matches = s.innerText.match(/\{"xdt_api.*?\}/g) || s.innerText.match(/\{"graphql".*?\}/g);
+                            if (matches) {
+                                for (const match of matches) {
+                                    const parsed = JSON.parse(match);
+                                    const item = parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || parsed?.graphql?.shortcode_media;
+                                    if (item) {
+                                        mediaData = item;
+                                        break;
+                                    }
                                 }
                             }
                         } catch (e) { }
                     }
+                    if (mediaData) break;
                 }
             }
 
@@ -95,15 +144,15 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 derived_from_html: true
             };
 
+            const getBestImage = (node) => {
+                if (node.display_resources && node.display_resources.length > 0) {
+                    return node.display_resources.reduce((prev, current) => (prev.config_width > current.config_width) ? prev : current).src;
+                }
+                return node.display_url || node.image_versions2?.candidates?.[0]?.url;
+            };
+
             if (mediaData) {
                 result.shortcode = mediaData.shortcode || mediaData.code;
-
-                const getBestImage = (node) => {
-                    if (node.display_resources && node.display_resources.length > 0) {
-                        return node.display_resources.reduce((prev, current) => (prev.config_width > current.config_width) ? prev : current).src;
-                    }
-                    return node.display_url || node.image_versions2?.candidates?.[0]?.url;
-                };
 
                 // Handle Carousel
                 const children = mediaData.edge_sidecar_to_children?.edges || mediaData.carousel_media;
@@ -123,20 +172,21 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     result.video_versions.push({ url: mediaData.video_url || mediaData.video_versions?.[0]?.url });
                 }
 
-                // Prioritize Best Display Resource for HD
-                const bestImg = getBestImage(mediaData) || getMeta('og:image');
-                if (bestImg) {
-                    result.image_versions2.candidates.push({ url: bestImg });
-                }
+                const bestImg = getBestImage(mediaData);
+                if (bestImg) result.image_versions2.candidates.push({ url: bestImg });
 
-            } else {
-                // LAST FALLBACK: OpenGraph
-                const imageUrl = getMeta('og:image');
-                const videoUrl = getMeta('og:video');
-                if (imageUrl) result.image_versions2.candidates.push({ url: imageUrl });
-                if (videoUrl) {
+            }
+
+            // Fallback check Meta
+            if (result.image_versions2.candidates.length === 0) {
+                const ogImg = getMeta('og:image');
+                if (ogImg) result.image_versions2.candidates.push({ url: ogImg });
+            }
+            if (result.video_versions.length === 0) {
+                const ogVid = getMeta('og:video');
+                if (ogVid) {
                     result.media_type = 2;
-                    result.video_versions.push({ url: videoUrl });
+                    result.video_versions.push({ url: ogVid });
                 }
             }
 
@@ -144,45 +194,96 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
         });
 
         if (!data.image_versions2.candidates.length && !data.video_versions.length && !data.carousel_media.length) {
-            const content = await page.content();
-            if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
+            content = await page.content();
+
+            // Detect blocks
+            if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram") || page.url().includes("/accounts/login")) {
                 throw new Error("LOGIN_REQUIRED");
             }
+            if (content.includes("Suspicious activity") || content.includes("Verify your account") || content.includes("Challenge")) {
+                throw new Error("ACCOUNT_FLAGGED_VERIFICATION_REQUIRED");
+            }
+            if (content.includes("Wait a few minutes before you try again") || content.includes("Too Many Requests")) {
+                throw new Error("IP_RATE_LIMITED");
+            }
+
             // Save debug screenshot
             const screenPath = path.join(__dirname, 'debug_last_fail.png');
             await page.screenshot({ path: screenPath });
-            console.log(`[Puppeteer] Failed to find media. Screenshot saved to ${screenPath}`);
+
+            // Save HTML for deep inspection
+            const htmlPath = path.join(__dirname, 'debug_last_fail.html');
+            fs.writeFileSync(htmlPath, content);
+
+            console.log(`[Puppeteer] Failed to find media. Screenshot saved to ${screenPath}. HTML saved to ${htmlPath}`);
             throw new Error("MEDIA_NOT_FOUND");
         }
 
         data.shortcode = data.shortcode || shortcode;
         return data;
 
-    } catch (error) {
-        console.error("[Puppeteer] Error:", error.message);
-        throw error;
-    } finally {
-        if (browser) await browser.close();
-    }
-}
+        async function attemptLogin(page, username, password) {
+            console.log(`[Puppeteer] Attempting login for ${username}...`);
+            try {
+                await page.goto("https://www.instagram.com/accounts/login/", { waitUntil: 'networkidle2' });
 
-function parseCookies(fileContent) {
-    const cookies = [];
-    const lines = fileContent.split('\n');
-    for (const line of lines) {
-        if (line.startsWith('#') || !line.trim()) continue;
-        const parts = line.split('\t');
-        if (parts.length >= 7) {
-            // Netscape format
-            cookies.push({
-                domain: parts[0],
-                path: parts[2],
-                secure: parts[3] === 'TRUE',
-                expires: parseInt(parts[4]) || undefined,
-                name: parts[5],
-                value: parts[6].trim()
-            });
+                // Wait for login fields
+                await page.waitForSelector('input[name="username"]', { timeout: 10000 });
+
+                await page.type('input[name="username"]', username, { delay: 100 });
+                await page.type('input[name="password"]', password, { delay: 100 });
+
+                await Promise.all([
+                    page.click('button[type="submit"]'),
+                    page.waitForNavigation({ waitUntil: 'networkidle2' })
+                ]);
+
+                const content = await page.content();
+                if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
+                    throw new Error("Login failed - still on login page.");
+                }
+
+                console.log("[Puppeteer] Login successful. Saving fresh cookies...");
+                const cookies = await page.cookies();
+                saveCookiesAsNetscape(cookies);
+
+            } catch (err) {
+                console.error("[Puppeteer] Login attempt failed:", err.message);
+                throw err;
+            }
         }
-    }
-    return cookies;
-}
+
+        function saveCookiesAsNetscape(cookies) {
+            const cookiesPath = path.join(__dirname, "cookies.txt");
+            let header = "# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file!  Do not edit.\n\n";
+            let content = cookies.map(c => {
+                const domain = c.domain;
+                const flag = domain.startsWith('.') ? "TRUE" : "FALSE";
+                const path = c.path;
+                const secure = c.secure ? "TRUE" : "FALSE";
+                const expiration = Math.floor(c.expires || (Date.now() / 1000 + 86400 * 30));
+                return `${domain}\t${flag}\t${path}\t${secure}\t${expiration}\t${c.name}\t${c.value}`;
+            }).join('\n');
+
+            fs.writeFileSync(cookiesPath, header + content);
+        }
+
+        function parseCookies(fileContent) {
+            const cookies = [];
+            const lines = fileContent.split('\n');
+            for (const line of lines) {
+                if (line.startsWith('#') || !line.trim()) continue;
+                const parts = line.split('\t');
+                if (parts.length >= 7) {
+                    cookies.push({
+                        domain: parts[0],
+                        path: parts[2],
+                        secure: parts[3] === 'TRUE',
+                        expires: parseInt(parts[4]) || undefined,
+                        name: parts[5],
+                        value: parts[6].trim()
+                    });
+                }
+            }
+            return cookies;
+        }
