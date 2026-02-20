@@ -13,10 +13,10 @@ export async function streamZip(items, res) {
     for (const item of items) {
         let url, ext;
 
-        if (item.video_versions) {
+        if (item.video_versions && item.video_versions.length > 0) {
             url = item.video_versions[0].url;
             ext = "mp4";
-        } else if (item.image_versions2) {
+        } else if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
             url = item.image_versions2.candidates[0].url;
             ext = "jpg";
         } else continue;

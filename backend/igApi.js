@@ -147,9 +147,16 @@ function transformYtDlpResponse(data, shortcode) {
     };
 }
 
-// Legacy wrappers
+// Story support via Puppeteer
 export async function fetchStoryByUrl(storyUrl) {
-    return { code: "NOT_IMPLEMENTED", message: "Stories not yet enabled on this version." };
+    try {
+        console.log(`🎬 Fetching story via Puppeteer: ${storyUrl}`);
+        const data = await fetchViaPuppeteer(null, storyUrl);
+        return data;
+    } catch (err) {
+        console.error("Story fetch failed:", err.message);
+        throw err;
+    }
 }
 
 export async function fetchIGTVByUrl(igtvUrl) {

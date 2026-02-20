@@ -145,33 +145,42 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
       </div>
 
       {result && (
-        <div className="mt-16 bg-slate-900/60 rounded-[3rem] shadow-4xl overflow-hidden border border-slate-800 text-left backdrop-blur-xl animate-in zoom-in-95 duration-500">
-          <div className="md:flex">
-            <div className="md:w-1/2 p-3">
-              <img src={result.thumbnail} alt="Preview" className="w-full h-[450px] object-cover rounded-[2.5rem] shadow-2xl" />
-            </div>
-            <div className="md:w-1/2 p-10 flex flex-col justify-center">
-              <div className="flex items-center gap-2 mb-6">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-green-500 font-black text-xs uppercase tracking-widest">Server Processing Complete</span>
+        <div className="mt-16 space-y-12">
+          {/* Carousel / Multiple Items Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {(result as any).items?.map((item: any, idx: number) => (
+              <div key={idx} className="bg-slate-900/60 rounded-[2.5rem] shadow-4xl overflow-hidden border border-slate-800 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
+                <div className="p-3">
+                  <img src={item.thumbnail} alt={`Preview ${idx + 1}`} className="w-full h-[300px] object-cover rounded-[2rem] shadow-xl" />
+                </div>
+                <div className="p-8 pt-2">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                    <span className="text-green-500 font-bold text-[10px] uppercase tracking-widest">
+                      {item.type === 'video' ? 'Video' : 'Image'} Ready
+                    </span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const extension = item.type === 'video' ? 'mp4' : 'jpg';
+                      const filename = `instagram_${result.shortcode || Date.now()}_${idx + 1}.${extension}`;
+                      await api.downloadMedia(url, idx, filename);
+                    }}
+                    className="w-full bg-white text-slate-950 py-4 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all active:scale-95 shadow-xl shadow-white/5"
+                  >
+                    Download {item.type === 'video' ? 'Video' : 'Image'}
+                  </button>
+                </div>
               </div>
-              <h3 className="text-4xl font-black mb-6 text-white leading-tight">Your Media is Ready</h3>
-              <p className="text-slate-400 leading-relaxed mb-10 font-medium text-lg">
-                {aiInfo || "We have successfully fetched your Instagram media in original high-definition quality. Click the button below to start your direct download."}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button
-                  onClick={executeDownload}
-                  className="flex-grow bg-white text-slate-950 py-6 rounded-2xl font-black text-xl hover:bg-slate-200 transition-all active:scale-95 shadow-2xl shadow-white/10"
-                >
-                  Download HD Now
-                </button>
-                <button className="p-6 bg-slate-800 text-white rounded-2xl hover:bg-slate-700 transition-all border border-slate-700">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                </button>
-              </div>
-            </div>
+            ))}
           </div>
+
+          {/* Main ready state message for Single items (to keep original feel if only 1) */}
+          {((result as any).items?.length === 1) && (
+            <div className="bg-slate-700/20 py-6 px-8 rounded-3xl border border-dashed border-slate-700 text-slate-400 font-medium">
+              HD Quality fetched successfully. Your file is ready for download.
+            </div>
+          )}
         </div>
       )}
     </div>

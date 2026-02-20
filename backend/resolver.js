@@ -67,9 +67,20 @@ function streamWithYtDlp(url, res, filename) {
 }
 
 async function handleStory(url, res) {
-    // Stories might be tricky with yt-dlp directly if they prompt for login differently
-    // But let's try strict generic streaming
-    streamWithYtDlp(url, res, "story.mp4");
+    try {
+        const media = await fetchStoryByUrl(url);
+
+        // Use post handling logic for story (single image or single video)
+        if (media.video_versions && media.video_versions.length > 0) {
+            const videoUrl = media.video_versions[0].url;
+            return streamDirect(videoUrl, res, "story_video.mp4");
+        } else {
+            const imgUrl = media.image_versions2.candidates[0].url;
+            return streamDirect(imgUrl, res, "story_image.jpg");
+        }
+    } catch (e) {
+        handleError(e, res);
+    }
 }
 
 async function handleReel(url, res) {

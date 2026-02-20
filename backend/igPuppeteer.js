@@ -6,10 +6,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export async function fetchMediaByShortcode(shortcode) {
+export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
     let browser = null;
     try {
-        console.log(`[Puppeteer] Launching browser for shortcode: ${shortcode}`);
+        const url = fullUrl || `https://www.instagram.com/p/${shortcode}/`;
+        console.log(`[Puppeteer] Launching browser for: ${url}`);
+
         browser = await puppeteer.launch({
             headless: "new",
             args: [
@@ -31,7 +33,6 @@ export async function fetchMediaByShortcode(shortcode) {
                 const cookieContent = fs.readFileSync(cookiesPath, 'utf8');
                 const cookies = parseCookies(cookieContent);
                 if (cookies.length > 0) {
-                    console.log(`[Puppeteer] Loading ${cookies.length} cookies...`);
                     await page.setCookie(...cookies);
                 }
             } catch (e) {
@@ -39,81 +40,121 @@ export async function fetchMediaByShortcode(shortcode) {
             }
         }
 
-        const url = `https://www.instagram.com/p/${shortcode}/`;
-        console.log(`[Puppeteer] Navigating to: ${url}`);
-
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // Wait for key elements to ensure page load (or valid 404)
-        try {
-            await page.waitForSelector('meta[property="og:image"]', { timeout: 10000 });
-        } catch (e) {
-            console.log("[Puppeteer] Meta tag not found immediately, checking page content...");
-        }
+        // Wait a bit for potential JS execution
+        await new Promise(r => setTimeout(r, 2000));
 
-        // Extract OpenGraph data
+        // Extract deep JSON data
         const data = await page.evaluate(() => {
             const getMeta = (prop) => document.querySelector(`meta[property="${prop}"]`)?.content;
 
-            const type = getMeta('og:type');
-            const videoUrl = getMeta('og:video');
-            const videoSecureUrl = getMeta('og:video:secure_url');
-            const imageUrl = getMeta('og:image');
-            const title = getMeta('og:title');
-            const description = getMeta('og:description');
+            // Attempt to find the deep JSON data
+            let mediaData = null;
+
+            // 1. Check window.__additionalDataLoaded
+            if (window.__additionalDataLoaded) {
+                for (const key in window.__additionalDataLoaded) {
+                    if (window.__additionalDataLoaded[key]?.graphql?.shortcode_media) {
+                        mediaData = window.__additionalDataLoaded[key].graphql.shortcode_media;
+                        break;
+                    }
+                }
+            }
+
+            // 2. Check window._sharedData
+            if (!mediaData && window._sharedData?.entry_data?.PostPage?.[0]?.graphql?.shortcode_media) {
+                mediaData = window._sharedData.entry_data.PostPage[0].graphql.shortcode_media;
+            }
+
+            // 3. Scan script tags for JSON
+            if (!mediaData) {
+                const scripts = Array.from(document.querySelectorAll('script'));
+                for (const s of scripts) {
+                    if (s.innerText.includes('xdt_api__v1__media__shortcode__web_info')) {
+                        try {
+                            const match = s.innerText.match(/\{.*\}/);
+                            if (match) {
+                                const parsed = JSON.parse(match[0]);
+                                if (parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0]) {
+                                    mediaData = parsed.xdt_api__v1__media__shortcode__web_info.items[0];
+                                }
+                            }
+                        } catch (e) { }
+                    }
+                }
+            }
 
             const result = {
-                id: 'puppeteer_scraped_' + Date.now(),
-                code: 'unknown',
-                media_type: 1, // Default to image
+                id: 'puppeteer_' + Date.now(),
+                shortcode: '',
+                media_type: 1,
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
-                caption: { text: title || description || '' },
-                derived_from_html: true // Forces resolver to stream direct URL
+                derived_from_html: true
             };
 
-            if (imageUrl) {
-                result.image_versions2.candidates.push({ url: imageUrl, width: 1080, height: 1080 });
-            }
+            if (mediaData) {
+                result.shortcode = mediaData.shortcode || mediaData.code;
 
-            if (videoUrl || videoSecureUrl) {
-                result.media_type = 2; // Video
-                result.video_versions.push({
-                    url: videoUrl || videoSecureUrl,
-                    width: 1080,
-                    height: 1080,
-                    type: 101
-                });
+                const getBestImage = (node) => {
+                    if (node.display_resources && node.display_resources.length > 0) {
+                        return node.display_resources.reduce((prev, current) => (prev.config_width > current.config_width) ? prev : current).src;
+                    }
+                    return node.display_url || node.image_versions2?.candidates?.[0]?.url;
+                };
+
+                // Handle Carousel
+                const children = mediaData.edge_sidecar_to_children?.edges || mediaData.carousel_media;
+                if (children && children.length > 0) {
+                    result.carousel_media = children.map(edge => {
+                        const node = edge.node || edge;
+                        return {
+                            video_versions: (node.is_video || node.video_versions?.length > 0) ? [{ url: node.video_url || node.video_versions?.[0]?.url }] : [],
+                            image_versions2: { candidates: [{ url: getBestImage(node) }] }
+                        };
+                    });
+                }
+
+                // Handle Single
+                if (mediaData.is_video || mediaData.video_versions?.length > 0) {
+                    result.media_type = 2;
+                    result.video_versions.push({ url: mediaData.video_url || mediaData.video_versions?.[0]?.url });
+                }
+
+                // Prioritize Best Display Resource for HD
+                const bestImg = getBestImage(mediaData) || getMeta('og:image');
+                if (bestImg) {
+                    result.image_versions2.candidates.push({ url: bestImg });
+                }
+
+            } else {
+                // LAST FALLBACK: OpenGraph
+                const imageUrl = getMeta('og:image');
+                const videoUrl = getMeta('og:video');
+                if (imageUrl) result.image_versions2.candidates.push({ url: imageUrl });
+                if (videoUrl) {
+                    result.media_type = 2;
+                    result.video_versions.push({ url: videoUrl });
+                }
             }
 
             return result;
         });
 
-        // Add Shortcode to result
-        data.shortcode = shortcode;
-
-        if (!data.image_versions2.candidates.length && !data.video_versions.length) {
-            // Check for private account or login redirect
-            const content = await page.content();
-            if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
-                throw new Error("LOGIN_REQUIRED");
-            }
-            // Take screenshot for debug if failing
-            // await page.screenshot({ path: 'debug_fail.png' });
-            throw new Error("MEDIA_NOT_FOUND_OR_PRIVATE");
+        if (!data.image_versions2.candidates.length && !data.video_versions.length && !data.carousel_media.length) {
+            throw new Error("MEDIA_NOT_FOUND");
         }
 
-        console.log(`[Puppeteer] Successfully extracted data. Video? ${data.video_versions.length > 0}`);
+        data.shortcode = data.shortcode || shortcode;
         return data;
 
     } catch (error) {
         console.error("[Puppeteer] Error:", error.message);
         throw error;
     } finally {
-        if (browser) {
-            await browser.close();
-        }
+        if (browser) await browser.close();
     }
 }
 
