@@ -159,10 +159,10 @@ async function fetchViaRapidAPI(shortcode) {
     console.log(`🌐 [RapidAPI] Connecting to ${host} for shortcode: ${shortcode}...`);
 
     const endpoints = [
+        { url: `https://${host}/v1/post_info`, params: { shortcode } },
         { url: `https://${host}/post/info`, params: { shortcode } },
-        { url: `https://${host}/ig/info_2/`, params: { shortcode } },
-        { url: `https://${host}/info`, params: { shortcode } },
-        { url: `https://${host}/ig/post_info/`, params: { shortcode } }
+        { url: `https://${host}/v1/info`, params: { shortcode } },
+        { url: `https://${host}/ig/info_2/`, params: { shortcode } }
     ];
 
     for (const ep of endpoints) {
@@ -191,9 +191,13 @@ async function fetchViaRapidAPI(shortcode) {
 }
 
 function transformRapidAPIResponse(data, shortcode) {
-    const item = data.items?.[0] || data.data?.[0] || data.data || data;
+    // Dig for the item in various possible response structures
+    const item = data.item || data.items?.[0] || data.data?.[0] || data.data || data;
 
-    if (!item) throw new Error("Could not parse RapidAPI response.");
+    if (!item || (!item.image_versions2 && !item.video_versions && !item.display_url)) {
+        console.error("❌ [RapidAPI] Invalid item structure:", JSON.stringify(data).substring(0, 200));
+        throw new Error("Could not parse RapidAPI response structure.");
+    }
 
     const result = {
         shortcode: shortcode,

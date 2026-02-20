@@ -12,7 +12,7 @@ interface Props {
 const DownloaderTool: React.FC<Props> = ({ title, description }) => {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<MediaItem | null>(null);
+  const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
   const [aiInfo, setAiInfo] = useState('');
 
@@ -34,10 +34,7 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
     try {
       const data = await api.getPreview(url);
       if (data.items && data.items.length > 0) {
-        // For now, just display the first item. 
-        // Future improvement: Support carousel UI
-        const item = data.items[0];
-        setResult(item);
+        setResult(data as any);
         setAiInfo("Ready to download your content!");
       } else {
         setError("No media found on this link.");
