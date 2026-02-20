@@ -53,7 +53,9 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
   const executeDownload = async () => {
     if (!result) return;
     try {
-      await api.downloadMedia(url); // Use original URL
+      const extension = result.type === 'video' ? 'mp4' : 'jpg';
+      const filename = `instagram_${result.shortcode || Date.now()}.${extension}`;
+      await api.downloadMedia(url, 0, filename);
     } catch (err) {
       console.error("Download failed", err);
       alert("Download failed. Please try again.");
@@ -79,8 +81,8 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
               key={tab.id}
               onClick={() => navigate(tab.path)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${location.pathname === tab.path
-                  ? 'bg-slate-700 text-white shadow-lg'
-                  : 'text-slate-500 hover:text-white hover:bg-slate-800'
+                ? 'bg-slate-700 text-white shadow-lg'
+                : 'text-slate-500 hover:text-white hover:bg-slate-800'
                 }`}
             >
               <span>{tab.icon}</span>

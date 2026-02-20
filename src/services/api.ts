@@ -47,12 +47,25 @@ export const api = {
 
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
+
+            // Try to determine filename from headers if not provided
+            let finalFilename = filename;
+            if (!finalFilename) {
+                const contentType = response.headers.get("content-type");
+                let ext = "mp4";
+                if (contentType?.includes("image/jpeg")) ext = "jpg";
+                else if (contentType?.includes("image/png")) ext = "png";
+                else if (contentType?.includes("video/mp4")) ext = "mp4";
+
+                finalFilename = `instagram_${Date.now()}.${ext}`;
+            }
+
             const a = document.createElement('a');
             a.href = downloadUrl;
-            a.download = filename || `instagram_${Date.now()}.mp4`;
+            a.download = finalFilename;
             document.body.appendChild(a);
             a.click();
-            a.remove();
+            document.body.removeChild(a); // Fix: use removeChild or remove()
             window.URL.revokeObjectURL(downloadUrl);
         } catch (error: any) {
             console.error("Download error:", error);
