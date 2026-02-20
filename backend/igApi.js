@@ -1,5 +1,11 @@
 import { spawn } from "child_process";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from 'url';
+
+// Fix __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // robust yt-dlp wrapper
 // This ensures stability, no IP bans (until heavy usage), and high traffic handling via CLI.
@@ -10,8 +16,13 @@ export async function fetchMediaByShortcode(shortcode) {
 
         const args = ["--dump-json", "--no-warnings", "--no-playlist", url];
 
-        // Add authentication if provided
-        if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
+        // Path to cookies.txt (in the same directory as this file)
+        const cookiesPath = path.join(__dirname, "cookies.txt");
+
+        if (fs.existsSync(cookiesPath)) {
+            console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Using cookies.txt)...`);
+            args.push("--cookies", cookiesPath);
+        } else if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
             console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Authenticated as ${process.env.IG_USERNAME})...`);
             args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
         } else {
