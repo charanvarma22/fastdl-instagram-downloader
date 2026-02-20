@@ -1,3 +1,4 @@
+import axios from "axios";
 // Replaced Puppeteer with Robust External API
 // This ensures stability, no IP bans, and high traffic handling.
 
