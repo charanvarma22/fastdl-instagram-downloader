@@ -115,17 +115,23 @@ app.post("/api/preview", async (req, res) => {
     }
 
     // Single Video
-    if (media.video_versions?.[0]) {
+    if (media.type === "video" || media.video_versions?.[0]) {
       return res.json({
         type: "video",
-        items: [{ id: 0, type: "video", thumbnail: media.image_versions2?.candidates?.[0]?.url, mediaUrl: media.video_versions[0].url, shortcode }],
+        items: [{
+          id: 0,
+          type: "video",
+          thumbnail: media.image_versions2?.candidates?.[0]?.url || (media.type === 'image' ? media.video_versions?.[0]?.url : null),
+          mediaUrl: media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url,
+          shortcode
+        }],
         shortcode
       });
     }
 
     // Single Image
-    if (media.image_versions2?.candidates?.[0]) {
-      const imgUrl = media.image_versions2.candidates[0].url;
+    if (media.type === "image" || media.image_versions2?.candidates?.[0]) {
+      const imgUrl = media.image_versions2?.candidates?.[0]?.url || media.video_versions?.[0]?.url;
       return res.json({
         type: "image",
         items: [{ id: 0, type: "image", thumbnail: imgUrl, mediaUrl: imgUrl, shortcode }],

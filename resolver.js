@@ -91,8 +91,8 @@ async function handleSingleMedia(url, res, defaultFilename = "media.mp4") {
         const media = await fetchMediaByShortcode(shortcode);
 
         // Prefer Video
-        if (media.video_versions && media.video_versions.length > 0) {
-            const videoUrl = media.video_versions[0].url;
+        if (media.type === "video" || (media.video_versions && media.video_versions.length > 0)) {
+            const videoUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
             return streamDirect(videoUrl, res, defaultFilename, url);
         }
 
@@ -125,8 +125,8 @@ async function handlePost(url, res) {
         }
 
         // Single Media
-        if (media.video_versions && media.video_versions.length > 0) {
-            const videoUrl = media.video_versions[0].url;
+        if (media.type === "video" || (media.video_versions && media.video_versions.length > 0)) {
+            const videoUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
             return streamDirect(videoUrl, res, "post_video.mp4", url);
         } else {
             // It's an image

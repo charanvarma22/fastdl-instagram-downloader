@@ -114,16 +114,20 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            carousel_media: data.entries.map(entry => ({
-                video_versions: entry.ext === 'mp4' || entry.vcodec !== 'none' ? [{ url: entry.url }] : [],
-                image_versions2: { candidates: [{ url: entry.thumbnail || entry.url }] }
-            })),
+            carousel_media: data.entries.map(entry => {
+                const isEntryVideo = entry.ext === 'mp4' || entry.ext === 'webm' || entry.vcodec !== 'none';
+                return {
+                    video_versions: isEntryVideo ? [{ url: entry.url }] : [],
+                    image_versions2: { candidates: [{ url: entry.thumbnail || entry.url }] },
+                    type: isEntryVideo ? "video" : "image"
+                };
+            }),
             video_versions: [],
             image_versions2: { candidates: [] }
         };
     }
 
-    const isVideo = data.ext === 'mp4' || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
+    const isVideo = ['mp4', 'webm', 'mkv', 'mov'].includes(data.ext) || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
 
     return {
         shortcode: shortcode,
@@ -131,6 +135,7 @@ function transformYtDlpResponse(data, shortcode) {
         image_versions2: {
             candidates: data.thumbnail ? [{ url: data.thumbnail }] : []
         },
+        type: isVideo ? "video" : "image",
         carousel_media: []
     };
 }
