@@ -64,8 +64,10 @@ export async function fetchMediaByShortcode(shortcode) {
             if (code === 0) {
                 try {
                     const jsonOutput = JSON.parse(stdoutData);
+                    const result = transformYtDlpResponse(jsonOutput, shortcode);
+                    result.method = "yt-dlp";
                     console.log(`✅ [yt-dlp] Success for ${shortcode}`);
-                    return cleanResolve(transformYtDlpResponse(jsonOutput, shortcode));
+                    return cleanResolve(result);
                 } catch (err) {
                     console.error("❌ [yt-dlp] JSON Parse Error:", err.message);
                 }
@@ -78,6 +80,7 @@ export async function fetchMediaByShortcode(shortcode) {
             if (process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_KEY !== "PASTE_YOUR_KEY_HERE") {
                 try {
                     const rapidData = await fetchViaRapidAPI(shortcode);
+                    rapidData.method = "RapidAPI";
                     console.log(`✅ [RapidAPI] Success for ${shortcode}`);
                     return cleanResolve(rapidData);
                 } catch (rapidErr) {
@@ -91,6 +94,7 @@ export async function fetchMediaByShortcode(shortcode) {
             console.log(`🔄 [Puppeteer] Starting deep scraping for ${shortcode}...`);
             try {
                 const puppeteerData = await fetchViaPuppeteer(shortcode);
+                puppeteerData.method = "Puppeteer";
                 console.log(`✅ [Puppeteer] Success for ${shortcode}`);
                 return cleanResolve(puppeteerData);
             } catch (fallbackErr) {

@@ -101,7 +101,7 @@ app.post("/api/preview", async (req, res) => {
     logger.info(`📸 Fetching preview for: ${shortcode}`);
 
     const media = await fetchMediaByShortcode(shortcode);
-    logger.info(`🔍 [PREVIEW] Detected Type: ${media.type} | Videos: ${media.video_versions?.length} | Images: ${media.image_versions2?.candidates?.length} | Carousel: ${media.carousel_media?.length}`);
+    logger.info(`🔍 [PREVIEW] Detected Type: ${media.type} | Method: ${media.method || 'unknown'} | Videos: ${media.video_versions?.length} | Images: ${media.image_versions2?.candidates?.length} | Carousel: ${media.carousel_media?.length}`);
 
     // Carousel
     if (media.carousel_media?.length > 0) {
@@ -115,8 +115,9 @@ app.post("/api/preview", async (req, res) => {
       return res.json({ type: "carousel", items, shortcode });
     }
 
-    // Single Video
-    if (media.type === "video" || media.video_versions?.[0]) {
+    // Single Video / Reel Check
+    const isReelOrTv = url.includes("/reel/") || url.includes("/tv/");
+    if (isReelOrTv || media.type === "video" || media.video_versions?.[0]) {
       return res.json({
         type: "video",
         items: [{

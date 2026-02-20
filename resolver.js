@@ -90,6 +90,12 @@ async function handleSingleMedia(url, res, defaultFilename = "media.mp4") {
         const shortcode = extractShortcode(url);
         const media = await fetchMediaByShortcode(shortcode);
 
+        // Force 'video' for Reels/TV if not already detected
+        if (url.includes("/reel/") || url.includes("/tv/")) {
+            media.type = "video";
+            if (!defaultFilename.endsWith(".mp4")) defaultFilename = "media.mp4";
+        }
+
         // Prefer Video
         if (media.type === "video" || (media.video_versions && media.video_versions.length > 0)) {
             const videoUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
