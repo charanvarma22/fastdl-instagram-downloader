@@ -38,12 +38,12 @@ const logger = winston.createLogger({
         winston.format.simple()
       )
     }),
-    new winston.transports.File({ 
-      filename: 'logs/error.log', 
-      level: 'error' 
+    new winston.transports.File({
+      filename: 'logs/error.log',
+      level: 'error'
     }),
-    new winston.transports.File({ 
-      filename: 'logs/combined.log' 
+    new winston.transports.File({
+      filename: 'logs/combined.log'
     })
   ]
 });
@@ -71,7 +71,7 @@ app.use(helmet({
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS 
+  origin: process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -108,10 +108,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // HTTP request logger
-app.use(morgan('combined', { 
-  stream: { 
-    write: (message) => logger.info(message.trim()) 
-  } 
+app.use(morgan('combined', {
+  stream: {
+    write: (message) => logger.info(message.trim())
+  }
 }));
 
 // Static files
@@ -134,6 +134,40 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/blog', blogApiRoutes);
 app.use('/api/sitemap', blogApiRoutes);
+
+// ============================================
+// PROXY: Forward Downloader requests to Port 3001
+// ============================================
+const http = require('http');
+
+const forwardToDownloader = (req, res) => {
+  const options = {
+    hostname: 'localhost',
+    port: 3001,
+    path: req.url,
+    method: req.method,
+    headers: req.headers
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
+
+  req.pipe(proxyReq, { end: true });
+
+  proxyReq.on('error', (err) => {
+    console.error('Downloader Proxy Error:', err.message);
+    if (!res.headersSent) {
+      res.status(503).json({ error: 'Instagram service is offline. Please ensure the backend is running on port 3001.' });
+    }
+  });
+};
+
+// Mount proxy for specific routes
+app.all('/api/preview', forwardToDownloader);
+app.all('/api/download', forwardToDownloader);
+app.all('/resolve', forwardToDownloader);
 
 // Sitemap.xml serving
 app.get('/sitemap.xml', (req, res) => {
@@ -175,8 +209,8 @@ app.use((err, req, res, next) => {
 
   res.status(err.status || 500).json({
     success: false,
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
       : err.message,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
@@ -215,7 +249,7 @@ const server = app.listen(PORT, () => {
 ║  Time:        ${new Date().toISOString().padEnd(29)} ║
 ╚════════════════════════════════════════════╝
   `);
-  
+
   logger.info('API Endpoints:');
   logger.info('  POST /api/blog/publish');
   logger.info('  GET  /api/sitemap/update');
