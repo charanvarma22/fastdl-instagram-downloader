@@ -154,35 +154,40 @@ export async function fetchIGTVByUrl(igtvUrl) {
 
 async function fetchViaRapidAPI(shortcode) {
     const key = process.env.RAPIDAPI_KEY;
-    const host = process.env.RAPIDAPI_HOST || "instagram-scraper-2022.p.rapidapi.com";
+    const host = process.env.RAPIDAPI_HOST || "instagram-scraper-20251.p.rapidapi.com";
 
-    console.log(`🌐 [RapidAPI] Connecting to ${host}...`);
+    console.log(`🌐 [RapidAPI] Connecting to ${host} for shortcode: ${shortcode}...`);
 
     const endpoints = [
+        { url: `https://${host}/post/info`, params: { shortcode } },
         { url: `https://${host}/ig/info_2/`, params: { shortcode } },
-        { url: `https://${host}/ig/post_info/`, params: { shortcode } },
-        { url: `https://${host}/post/info`, params: { shortcode } }
+        { url: `https://${host}/info`, params: { shortcode } },
+        { url: `https://${host}/ig/post_info/`, params: { shortcode } }
     ];
 
     for (const ep of endpoints) {
         try {
+            console.log(`📡 [RapidAPI] Trying endpoint: ${ep.url}`);
             const response = await axios.get(ep.url, {
                 params: ep.params,
                 headers: {
                     'x-rapidapi-key': key,
                     'x-rapidapi-host': host
                 },
-                timeout: 10000
+                timeout: 15000
             });
 
-            if (response.data && (response.data.items || response.data.data)) {
+            if (response.data && (response.data.items || response.data.data || response.data.shortcode)) {
+                console.log(`✅ [RapidAPI] Data received from ${ep.url}`);
                 return transformRapidAPIResponse(response.data, shortcode);
             }
         } catch (e) {
-            console.warn(`[RapidAPI] Endpoint ${ep.url} failed: ${e.message}`);
+            const status = e.response?.status;
+            const errorMsg = e.response?.data?.message || e.message;
+            console.warn(`⚠️ [RapidAPI] Endpoint ${ep.url} failed (${status || 'No Status'}): ${errorMsg}`);
         }
     }
-    throw new Error("RapidAPI failed to return data from all endpoints.");
+    throw new Error("RapidAPI failed to return data from all tested endpoints.");
 }
 
 function transformRapidAPIResponse(data, shortcode) {
