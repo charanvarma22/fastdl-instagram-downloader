@@ -1,16 +1,22 @@
 // ============================================
 // BLOG PUBLISHING API ENDPOINTS (WordPress Compatible)
-// File: routes/blogApi.js
+// File: routes/blogApi.js (ESM VERSION)
 // ============================================
 
-const express = require('express');
+import express from 'express';
+import mysql from 'mysql2/promise';
+import { marked } from 'marked';
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Fix __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = express.Router();
-const mysql = require('mysql2/promise');
-const { marked } = require('marked');
-const createDOMPurify = require('dompurify');
-const { JSDOM } = require('jsdom');
-const fs = require('fs').promises;
-const path = require('path');
 
 // Initialize DOMPurify
 const window = new JSDOM('').window;
@@ -53,7 +59,7 @@ const authenticateAPIKey = (req, res, next) => {
 // Admin protection for sensitive routes
 const adminRoutes = ['/publish', '/sitemap/update', '/stats'];
 router.use((req, res, next) => {
-  if (adminRoutes.some(path => req.path.startsWith(path))) {
+  if (adminRoutes.some(p => req.path.startsWith(p))) {
     return authenticateAPIKey(req, res, next);
   }
   next();
@@ -230,4 +236,4 @@ router.get('/health', async (req, res) => {
   } catch (e) { res.status(503).json({ status: 'unhealthy', error: e.message }); }
 });
 
-module.exports = router;
+export default router;

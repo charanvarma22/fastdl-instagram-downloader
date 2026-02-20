@@ -1,6 +1,14 @@
 import axios from "axios";
 import { fetchMediaByShortcode, fetchStoryByUrl, fetchIGTVByUrl } from "./igApi.js";
 import { streamZip } from "./streamZip.js";
+import { spawn } from "child_process";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from 'url';
+
+// Fix __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export async function resolveUrl(url, res) {
     try {
@@ -15,29 +23,129 @@ export async function resolveUrl(url, res) {
     }
 }
 
+// Universal Streamer using yt-dlp (Bypasses 403 Forbidden on CDN)
+function streamWithYtDlp(url, res, filename) {
+    const args = ["-o", "-", url]; // Output to stdout
+
+    // Use cookies if available
+    const cookiesPath = path.join(__dirname, "cookies.txt");
+    if (fs.existsSync(cookiesPath)) {
+        args.push("--cookies", cookiesPath);
+    } else if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
+        args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
+    }
+
+    // Set Headers
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    // We don't know Content-Type ahead of time easily with stdout, but browsers handle binaries well.
+    // We can try to guess or let yt-dlp handle it.
+
+    console.log(`DATA STREAM: Starting yt-dlp stream for ${url}`);
+
+    const ytDlp = spawn("yt-dlp", args);
+
+    ytDlp.stdout.pipe(res);
+
+    ytDlp.stderr.on("data", (data) => {
+        console.error("Stream Stderr:", data.toString());
+    });
+
+    ytDlp.on("close", (code) => {
+        if (code !== 0) {
+            console.error(`Stream failed with code ${code}`);
+            // If headers sent, we can't send JSON error. Connection just closes.
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Download stream failed" });
+            }
+        }
+    });
+
+    // Handle client disconnect
+    res.on("close", () => {
+        ytDlp.kill();
+    });
+}
+
 async function handleStory(url, res) {
     try {
-        const story = await fetchStoryByUrl(url);
+        const media = await fetchStoryByUrl(url);
 
-        if (story.type === "video") {
-            res.setHeader("Content-Type", "video/mp4");
-            res.setHeader("Content-Disposition", "attachment; filename=story.mp4");
+        // Use post handling logic for story (single image or single video)
+        if (media.video_versions && media.video_versions.length > 0) {
+            const videoUrl = media.video_versions[0].url;
+            return streamDirect(videoUrl, res, "story_video.mp4");
+        } else {
+            const imgUrl = media.image_versions2.candidates[0].url;
+            return streamDirect(imgUrl, res, "story_image.jpg");
+        }
+    } catch (e) {
+        handleError(e, res);
+    }
+}
 
-            const stream = await axios.get(story.url, { responseType: "stream" });
-            return stream.data.pipe(res);
+async function handleReel(url, res) {
+    streamWithYtDlp(url, res, "reel.mp4");
+}
+
+async function handleIGTV(url, res) {
+    streamWithYtDlp(url, res, "igtv.mp4");
+}
+
+/* ================= POSTS ================= */
+
+async function handlePost(url, res) {
+    // For posts, we still need to know if it's a Carousel (Zip) or Single
+    // So we fetch metadata first
+    try {
+        const shortcode = extractShortcode(url);
+        const media = await fetchMediaByShortcode(shortcode);
+
+        if (media.carousel_media && media.carousel_media.length > 0) {
+            // For zip, we pass the MEDIA object to streamZip
+            return streamZip(media.carousel_media, res);
         }
 
-        if (story.type === "image") {
-            res.setHeader("Content-Type", "image/jpeg");
-            res.setHeader("Content-Disposition", "attachment; filename=story.jpg");
+        // Single Media
+        if (media.video_versions && media.video_versions.length > 0) {
+            // It's a video - assume yt-dlp works for videos
+            streamWithYtDlp(url, res, "post_video.mp4");
+        } else {
+            // It's an image
+            // If it came from HTML fallback, we MUST use the direct URL
+            if (media.derived_from_html) {
+                const imgUrl = media.image_versions2.candidates[0].url;
+                return streamDirect(imgUrl, res, "post_image.jpg");
+            }
 
-            const stream = await axios.get(story.url, { responseType: "stream" });
-            return stream.data.pipe(res);
+            // Otherwise, try streaming with yt-dlp (standard flow)
+            // But honestly, if it's an image, direct streaming via axios is often safer if we have the URL
+            // Let's rely on the URL if present
+            if (media.image_versions2 && media.image_versions2.candidates.length > 0) {
+                const imgUrl = media.image_versions2.candidates[0].url;
+                return streamDirect(imgUrl, res, "post_image.jpg");
+            }
+
+            // Fallback to yt-dlp stream if no URL (unlikely)
+            streamWithYtDlp(url, res, "post_image.jpg");
         }
 
-        return res.status(400).json({ error: "Unsupported story media type" });
+    } catch (e) {
+        handleError(e, res);
+    }
+}
+
+
+async function streamDirect(url, res, filename) {
+    try {
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        // We can set Content-Type if we knew it, but axios stream is fine
+
+        const response = await axios.get(url, { responseType: "stream" });
+        response.data.pipe(res);
     } catch (err) {
-        return handleError(err, res);
+        console.error("Direct Stream Failed:", err.message);
+        // Try fallback to yt-dlp if direct stream fails? Not for images usually.
+        res.status(500).json({ error: "Failed to download image." });
     }
 }
 
@@ -47,83 +155,17 @@ function extractShortcode(url) {
     return m[2];
 }
 
-async function handleReel(url, res) {
-    const shortcode = extractShortcode(url);
-    const media = await fetchMediaByShortcode(shortcode);
-
-    const videoUrl = media.video_versions?.[0]?.url;
-    if (!videoUrl) throw new Error("Reel video not found");
-
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=reel.mp4");
-
-    const stream = await axios.get(videoUrl, { responseType: "stream" });
-    stream.data.pipe(res);
-}
-
-async function handleIGTV(url, res) {
-    try {
-        const igtv = await fetchIGTVByUrl(url);
-
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Disposition", `attachment; filename=igtv_${igtv.title.slice(0, 30)}.mp4`);
-
-        const stream = await axios.get(igtv.url, { responseType: "stream" });
-        return stream.data.pipe(res);
-    } catch (err) {
-        return handleError(err, res);
-    }
-}
-
-/* ================= POSTS ================= */
-
-async function handlePost(url, res) {
-    const shortcode = extractShortcode(url);
-    const media = await fetchMediaByShortcode(shortcode);
-
-    if (media.carousel_media) {
-        return streamZip(media.carousel_media, res);
-    }
-
-    return streamSingle(media, res);
-}
-
-async function streamSingle(media, res) {
-    /* VIDEO POST */
-    if (media.video_versions) {
-        const videoUrl = media.video_versions[0].url;
-
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
-
-        const stream = await axios.get(videoUrl, { responseType: "stream" });
-        return stream.data.pipe(res);
-    }
-
-    /* IMAGE POST */
-    if (media.image_versions2) {
-        const imgUrl = media.image_versions2.candidates[0].url;
-
-        res.setHeader("Content-Type", "image/jpeg");
-        res.setHeader("Content-Disposition", "attachment; filename=image.jpg");
-
-        const stream = await axios.get(imgUrl, { responseType: "stream" });
-        return stream.data.pipe(res);
-    }
-
-    throw new Error("Unknown post type");
-}
-
 // Error handler with user-friendly messages
 function handleError(err, res) {
+    if (res.headersSent) return; // Can't send JSON if streaming started
+
+    console.error("Resolver Error:", err.message);
+
     const errorMap = {
         "MEDIA_NOT_FOUND": { status: 404, message: "Post not found - it might be deleted or private" },
-        "STORY_NOT_FOUND": { status: 404, message: "Story expired or deleted (stories disappear after 24h)" },
         "API_BLOCKED": { status: 429, message: "Instagram is blocking requests - try again in a few minutes" },
         "NOT_FOUND": { status: 404, message: "Content not found" },
-        "NO_VIDEO": { status: 400, message: "Video not found in this IGTV" },
         "INVALID_URL": { status: 400, message: "Invalid Instagram URL format" },
-        "NETWORK": { status: 503, message: "Network error - please check your connection" },
         "UNKNOWN": { status: 500, message: "Unknown error occurred" }
     };
 
@@ -136,3 +178,4 @@ function handleError(err, res) {
         timestamp: new Date().toISOString()
     });
 }
+

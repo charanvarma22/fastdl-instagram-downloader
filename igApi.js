@@ -1,204 +1,231 @@
-import axios from "axios";
+import { spawn } from "child_process";
+import path from "path";
 import fs from "fs";
+import { fileURLToPath } from 'url';
+import axios from "axios";
+import { fetchMediaByShortcode as fetchViaPuppeteer } from "./igPuppeteer.js";
+import dotenv from "dotenv";
 
-function loadCookies() {
-    const lines = fs.readFileSync("cookies.txt", "utf8").split(/\r?\n/);
-    const cookies = [];
+dotenv.config();
 
-    for (let line of lines) {
-        line = line.trim();
-        if (!line) continue;
-        if (line.startsWith("# Netscape")) continue;
-        if (line.startsWith("# http")) continue;
+// Fix __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-        // Remove #HttpOnly_ prefix safely
-        if (line.startsWith("#HttpOnly_")) {
-            line = line.replace("#HttpOnly_", "");
-        }
-
-        const parts = line.split("\t");
-        if (parts.length < 7) continue;
-
-        const name = parts[5];
-        const value = parts[6];
-
-        if (name && value) {
-            cookies.push(`${name}=${value}`);
-        }
-    }
-
-    return cookies.join("; ");
-}
-
-const COOKIE = loadCookies();
-const csrfMatch = COOKIE.match(/csrftoken=([^;]+)/);
-const CSRF_TOKEN = csrfMatch ? csrfMatch[1] : "";
-
-const mobileHeaders = {
-    "User-Agent":
-        "Instagram 269.0.0.18.75 Android (30/11; 420dpi; 1080x2340; samsung; SM-G991B; o1s; exynos2100; en_US)",
-    "X-IG-App-ID": "936619743392459",
-    "Cookie": COOKIE,
-    "Accept": "*/*",
-    "X-CSRFToken": CSRF_TOKEN
-};
-
-const webHeaders = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Cookie": COOKIE,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Dest": "document",
-    "Upgrade-Insecure-Requests": "1"
-};
-
-// 0️⃣ Algorithmic Shortcode -> Media ID
-function getMediaId(shortcode) {
-    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let id = 0n;
-    for (let i = 0; i < shortcode.length; i++) {
-        const char = shortcode[i];
-        const index = alphabet.indexOf(char);
-        id = id * 64n + BigInt(index);
-    }
-    return id.toString();
-}
-
+/**
+ * Main function to fetch Instagram media.
+ * Tries yt-dlp -> RapidAPI -> Puppeteer fallback.
+ */
 export async function fetchMediaByShortcode(shortcode) {
-    try {
-        // 1️⃣ Get media ID locally (No web request needed!)
-        const mediaId = getMediaId(shortcode);
+    return new Promise((resolve, reject) => {
+        const url = `https://www.instagram.com/p/${shortcode}/`;
+        const args = ["--dump-json", "--no-warnings", "--no-playlist", url];
+        const cookiesPath = path.join(__dirname, "cookies.txt");
 
-        // 2️⃣ Mobile API (authenticated)
-        const apiUrl = `https://i.instagram.com/api/v1/media/${mediaId}/info/`;
-        const res = await axios.get(apiUrl, { headers: mobileHeaders, timeout: 10000 });
+        let ytDlpProcess = null;
 
-        if (!res.data?.items?.[0]) {
-            throw new Error("API_BLOCKED");
-        }
+        // Watchdog timer to prevent hanging requests
+        let timer = setTimeout(() => {
+            console.error(`🔴 [WATCHDOG] TIMEOUT: ${shortcode} reached 60s limit.`);
+            if (ytDlpProcess) ytDlpProcess.kill();
+            reject({ code: "TIMEOUT", message: "Download process timed out (60s)." });
+        }, 60000);
 
-        return res.data.items[0];
-    } catch (err) {
-
-        if (err.message === "MEDIA_NOT_FOUND") {
-            throw { code: "MEDIA_NOT_FOUND", message: "This post might be deleted, private, or archived" };
-        }
-        if (err.message === "API_BLOCKED") {
-            throw { code: "API_BLOCKED", message: "Instagram API blocked - try again later or check cookies" };
-        }
-        if (err.response?.status === 404) {
-            throw { code: "NOT_FOUND", message: "Post not found or has been deleted" };
-        }
-        if (err.code === "ECONNREFUSED") {
-            throw { code: "NETWORK", message: "Network error - check your connection" };
-        }
-        throw { code: "UNKNOWN", message: err.message || "Failed to fetch media" };
-    }
-}
-
-// Best-effort fetch for stories given a full story URL (e.g. /stories/<username>/<id>/)
-export async function fetchStoryByUrl(storyUrl) {
-    // Try to call the Instagram mobile API first if we can extract a numeric media id
-    try {
-        const idMatch = storyUrl.match(/stories\/[^\/]+\/(\d+)/);
-        if (idMatch) {
-            const mediaId = idMatch[1];
-            try {
-                const apiUrl = `https://i.instagram.com/api/v1/media/${mediaId}/info/`;
-                const res = await axios.get(apiUrl, { headers: mobileHeaders, timeout: 10000 });
-                const item = res.data?.items?.[0];
-                if (item) {
-                    if (item.video_versions && item.video_versions.length > 0) {
-                        const videoUrl = item.video_versions[0].url;
-                        const thumbnail = item.image_versions2?.candidates?.[0]?.url || null;
-                        return { type: "video", url: videoUrl, thumbnail };
-                    }
-                    if (item.image_versions2 && item.image_versions2.candidates?.length > 0) {
-                        const imgUrl = item.image_versions2.candidates[0].url;
-                        return { type: "image", url: imgUrl, thumbnail: imgUrl };
-                    }
-                }
-            } catch (apiErr) {
-                // fall through to HTML scraping if mobile API fails
-                console.warn("mobile API story fetch failed:", apiErr.message);
-            }
-        }
-
-        // Fallback: fetch the public story page HTML and try to extract urls
-        const html = await axios.get(storyUrl, { headers: webHeaders, timeout: 10000 });
-        const data = html.data || "";
-
-        // try several regexes for video URL
-        const videoMatch = data.match(/"video_versions"\s*:\s*\[\s*\{[^\}]*"url"\s*:\s*"([^"]+)"/i);
-        if (videoMatch) {
-            const videoUrl = videoMatch[1].replace(/\\u0026/g, "&");
-            // Try to extract thumbnail from display_url
-            const thumbMatch = data.match(/"display_url"\s*:\s*"([^"]+)"/i) || data.match(/"image_versions2"[^}]*"candidates"[^\]]*\{[^}]*"url"\s*:\s*"([^"]+)"/i);
-            const thumbnail = thumbMatch ? thumbMatch[1].replace(/\\u0026/g, "&") : null;
-            return { type: "video", url: videoUrl, thumbnail };
-        }
-
-        // try for a single video_url field
-        const videoMatch2 = data.match(/"video_url"\s*:\s*"([^\"]+)"/i);
-        if (videoMatch2) {
-            const videoUrl = videoMatch2[1].replace(/\\u0026/g, "&");
-            const thumbMatch = data.match(/"display_url"\s*:\s*"([^"]+)"/i) || data.match(/"image_versions2"[^}]*"candidates"[^\]]*\{[^}]*"url"\s*:\s*"([^"]+)"/i);
-            const thumbnail = thumbMatch ? thumbMatch[1].replace(/\\u0026/g, "&") : null;
-            return { type: "video", url: videoUrl, thumbnail };
-        }
-
-        // try image/display URL
-        const imgMatch = data.match(/"display_url"\s*:\s*"([^\"]+)"/i) || data.match(/"display_src"\s*:\s*"([^\"]+)"/i);
-        if (imgMatch) {
-            const imgUrl = imgMatch[1].replace(/\\u0026/g, "&");
-            return { type: "image", url: imgUrl, thumbnail: imgUrl };
-        }
-
-        throw new Error("STORY_NOT_FOUND");
-    } catch (err) {
-        if (err.message === "STORY_NOT_FOUND" || err.code === "STORY_NOT_FOUND") {
-            throw { code: "STORY_NOT_FOUND", message: "Story expired or has been deleted" };
-        }
-        if (err.response?.status === 404) {
-            throw { code: "NOT_FOUND", message: "Story not found" };
-        }
-        throw { code: "UNKNOWN", message: "Failed to fetch story media" };
-    }
-}
-
-// IGTV Video Downloader
-export async function fetchIGTVByUrl(igtvUrl) {
-    try {
-        // Extract shortcode from URL
-        const shortcodeMatch = igtvUrl.match(/\/tv\/([^/?]+)/);
-        if (!shortcodeMatch) {
-            throw new Error("INVALID_URL");
-        }
-
-        const shortcode = shortcodeMatch[1];
-        const media = await fetchMediaByShortcode(shortcode);
-
-        // IGTV content should have video_versions
-        if (!media.video_versions || media.video_versions.length === 0) {
-            throw new Error("NO_VIDEO");
-        }
-
-        const videoUrl = media.video_versions[0].url;
-        const caption = media.caption?.text || "igtv";
-
-        return {
-            type: "video",
-            url: videoUrl,
-            title: caption.substring(0, 50) // First 50 chars as filename hint
+        const cleanResolve = (data) => {
+            clearTimeout(timer);
+            resolve(data);
         };
-    } catch (err) {
-        if (err.message === "INVALID_URL") {
-            throw { code: "INVALID_URL", message: "Invalid IGTV URL format" };
+
+        const cleanReject = (error) => {
+            clearTimeout(timer);
+            reject(error);
+        };
+
+        if (fs.existsSync(cookiesPath)) {
+            console.log(`🚀 [yt-dlp] Starting for ${shortcode} (With cookies)...`);
+            args.push("--cookies", cookiesPath);
+        } else if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
+            console.log(`🚀 [yt-dlp] Starting for ${shortcode} (Auth fallback)...`);
+            args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
+        } else {
+            console.log(`🚀 [yt-dlp] Starting for ${shortcode} (Anonymous)...`);
         }
-        if (err.message === "NO_VIDEO") {
-            throw { code: "NO_VIDEO", message: "IGTV video not found - it might be private or deleted" };
-        }
-        throw err; // re-throw other errors for proper handling
+
+        ytDlpProcess = spawn("yt-dlp", args);
+        let stdoutData = "";
+        let stderrData = "";
+
+        ytDlpProcess.stdout.on("data", (data) => { stdoutData += data.toString(); });
+        ytDlpProcess.stderr.on("data", (data) => { stderrData += data.toString(); });
+
+        ytDlpProcess.on("close", async (code) => {
+            console.log(`📡 [yt-dlp] Process exited with code ${code} for ${shortcode}`);
+
+            if (code === 0) {
+                try {
+                    const jsonOutput = JSON.parse(stdoutData);
+                    console.log(`✅ [yt-dlp] Success for ${shortcode}`);
+                    return cleanResolve(transformYtDlpResponse(jsonOutput, shortcode));
+                } catch (err) {
+                    console.error("❌ [yt-dlp] JSON Parse Error:", err.message);
+                }
+            }
+
+            // --- FALLBACK CHAIN ---
+            console.warn(`⚠️ [yt-dlp] Failed or empty results. Trying professional fallbacks...`);
+
+            // 1. RapidAPI
+            if (process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_KEY !== "PASTE_YOUR_KEY_HERE") {
+                try {
+                    const rapidData = await fetchViaRapidAPI(shortcode);
+                    console.log(`✅ [RapidAPI] Success for ${shortcode}`);
+                    return cleanResolve(rapidData);
+                } catch (rapidErr) {
+                    console.warn(`⚠️ [RapidAPI] Failed: ${rapidErr.message}`);
+                }
+            } else {
+                console.log("No valid RAPIDAPI_KEY. Skipping RapidAPI...");
+            }
+
+            // 2. Puppeteer (Final Attempt)
+            console.log(`🔄 [Puppeteer] Starting deep scraping for ${shortcode}...`);
+            try {
+                const puppeteerData = await fetchViaPuppeteer(shortcode);
+                console.log(`✅ [Puppeteer] Success for ${shortcode}`);
+                return cleanResolve(puppeteerData);
+            } catch (fallbackErr) {
+                console.error(`❌ [ALL METHODS FAILED] for ${shortcode}: ${fallbackErr.message}`);
+                return cleanReject({
+                    code: "DOWNLOAD_FAILED",
+                    message: "Failed to fetch media from all available methods.",
+                    originalError: fallbackErr.message
+                });
+            }
+        });
+
+        ytDlpProcess.on("error", (err) => {
+            console.error("❌ [yt-dlp] Process spawn error:", err.message);
+            // Don't reject yet, let the handler above move to fallback
+        });
+    });
+}
+
+function transformYtDlpResponse(data, shortcode) {
+    if (data._type === 'playlist' && data.entries) {
+        return {
+            shortcode: shortcode,
+            carousel_media: data.entries.map(entry => ({
+                video_versions: entry.ext === 'mp4' || entry.vcodec !== 'none' ? [{ url: entry.url }] : [],
+                image_versions2: { candidates: [{ url: entry.thumbnail || entry.url }] }
+            })),
+            video_versions: [],
+            image_versions2: { candidates: [] }
+        };
     }
+
+    const isVideo = data.ext === 'mp4' || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
+
+    return {
+        shortcode: shortcode,
+        video_versions: isVideo ? [{ url: data.url }] : [],
+        image_versions2: {
+            candidates: data.thumbnail ? [{ url: data.thumbnail }] : []
+        },
+        carousel_media: []
+    };
+}
+
+export async function fetchStoryByUrl(storyUrl) {
+    try {
+        console.log(`🎬 Fetching story via Puppeteer: ${storyUrl}`);
+        const data = await fetchViaPuppeteer(null, storyUrl);
+        return data;
+    } catch (err) {
+        console.error("Story fetch failed:", err.message);
+        throw err;
+    }
+}
+
+export async function fetchIGTVByUrl(igtvUrl) {
+    const shortcodeMatch = igtvUrl.match(/\/tv\/([^/?]+)/);
+    if (!shortcodeMatch) throw new Error("INVALID_URL");
+    return await fetchMediaByShortcode(shortcodeMatch[1]);
+}
+
+async function fetchViaRapidAPI(shortcode) {
+    const key = process.env.RAPIDAPI_KEY;
+    const host = process.env.RAPIDAPI_HOST || "instagram-scraper-20251.p.rapidapi.com";
+
+    console.log(`🌐 [RapidAPI] Connecting to ${host} for shortcode: ${shortcode}...`);
+
+    const endpoints = [
+        { url: `https://${host}/post/info`, params: { shortcode } },
+        { url: `https://${host}/ig/info_2/`, params: { shortcode } },
+        { url: `https://${host}/info`, params: { shortcode } },
+        { url: `https://${host}/ig/post_info/`, params: { shortcode } }
+    ];
+
+    for (const ep of endpoints) {
+        try {
+            console.log(`📡 [RapidAPI] Trying endpoint: ${ep.url}`);
+            const response = await axios.get(ep.url, {
+                params: ep.params,
+                headers: {
+                    'x-rapidapi-key': key,
+                    'x-rapidapi-host': host
+                },
+                timeout: 15000
+            });
+
+            if (response.data && (response.data.items || response.data.data || response.data.shortcode)) {
+                console.log(`✅ [RapidAPI] Data received from ${ep.url}`);
+                return transformRapidAPIResponse(response.data, shortcode);
+            }
+        } catch (e) {
+            const status = e.response?.status;
+            const errorMsg = e.response?.data?.message || e.message;
+            console.warn(`⚠️ [RapidAPI] Endpoint ${ep.url} failed (${status || 'No Status'}): ${errorMsg}`);
+        }
+    }
+    throw new Error("RapidAPI failed to return data from all tested endpoints.");
+}
+
+function transformRapidAPIResponse(data, shortcode) {
+    const item = data.items?.[0] || data.data?.[0] || data.data || data;
+
+    if (!item) throw new Error("Could not parse RapidAPI response.");
+
+    const result = {
+        shortcode: shortcode,
+        media_type: item.media_type || 1,
+        image_versions2: { candidates: [] },
+        video_versions: [],
+        carousel_media: []
+    };
+
+    const carouselArr = item.carousel_media || item.edge_sidecar_to_children?.edges;
+    if (carouselArr && carouselArr.length > 0) {
+        result.carousel_media = carouselArr.map(c => {
+            const node = c.node || c;
+            const img = node.image_versions2?.candidates?.[0]?.url || node.display_url;
+            const vid = node.video_versions?.[0]?.url || node.video_url;
+
+            return {
+                image_versions2: { candidates: [{ url: img }] },
+                video_versions: vid ? [{ url: vid }] : []
+            };
+        });
+    }
+
+    if (item.video_versions?.length > 0 || item.video_url) {
+        result.media_type = 2;
+        result.video_versions.push({ url: item.video_versions?.[0]?.url || item.video_url });
+    }
+
+    const bestImg = item.image_versions2?.candidates?.[0]?.url || item.display_url || item.thumbnail_url;
+    if (bestImg) {
+        result.image_versions2.candidates.push({ url: bestImg });
+    }
+
+    return result;
 }

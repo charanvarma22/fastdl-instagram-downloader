@@ -1,32 +1,43 @@
 // ============================================
-// INSTAMINSTA BLOG API SERVER
+// INSTAMINSTA UNIFIED SERVER (Blog + Downloader)
 // File: server.js
 // ============================================
 
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
-const rateLimit = require('express-rate-limit');
-const morgan = require('morgan');
-const winston = require('winston');
-const path = require('path');
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import compression from "compression";
+import morgan from "morgan";
+import winston from "winston";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 
-// Import routes
-const blogApiRoutes = require('./routes/blogApi');
+// Ensure logs directory exists
+const logsDir = path.join(process.cwd(), "logs");
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
-// ============================================
-// INITIALIZE EXPRESS APP
-// ============================================
+
+// Import Custom Routes & Logic
+import blogApiRoutes from "./routes/blogApi.js";
+import * as resolverModule from "./resolver.js";
+import { fetchMediaByShortcode, fetchStoryByUrl } from "./igApi.js";
+
+// Fix __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001; // Port 3001 required for Downloader
 
 // ============================================
 // LOGGER CONFIGURATION
 // ============================================
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL || "info",
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json()
@@ -38,226 +49,174 @@ const logger = winston.createLogger({
         winston.format.simple()
       )
     }),
-    new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error'
-    }),
-    new winston.transports.File({
-      filename: 'logs/combined.log'
-    })
+    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
+    new winston.transports.File({ filename: "logs/combined.log" })
   ]
 });
 
 // ============================================
-// SECURITY MIDDLEWARE
+// MIDDLEWARE
 // ============================================
-
-// Helmet for security headers
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    }
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  }
+  contentSecurityPolicy: false, // Required if serving frontend from same domain
+  crossOriginEmbedderPolicy: false
 }));
-
-// CORS configuration
-const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
-  credentials: true
-};
-
-if (process.env.ENABLE_CORS === 'true') {
-  app.use(cors(corsOptions));
-}
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-if (process.env.ENABLE_RATE_LIMIT === 'true') {
-  app.use('/api/', limiter);
-}
-
-// ============================================
-// GENERAL MIDDLEWARE
-// ============================================
-
-// Compression
+app.use(cors());
 app.use(compression());
-
-// Body parsers
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// HTTP request logger
-app.use(morgan('combined', {
-  stream: {
-    write: (message) => logger.info(message.trim())
-  }
-}));
-
-// Static files
-app.use(express.static('public'));
+app.use(express.json());
+app.use(morgan("dev"));
 
 // ============================================
-// ROUTES
+// BLOG API ROUTES
 // ============================================
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV
-  });
-});
-
-// API routes
-app.use('/api/blog', blogApiRoutes);
-app.use('/api/sitemap', blogApiRoutes);
+app.use("/api/blog", blogApiRoutes);
+app.use("/api/sitemap", blogApiRoutes); // Legacy support for sitemap update
 
 // ============================================
-// PROXY: Forward Downloader requests to Port 3001
+// INSTAGRAM DOWNLOADER ROUTES
 // ============================================
-const http = require('http');
+const resolver = resolverModule.default || resolverModule.resolveUrl;
 
-const forwardToDownloader = (req, res) => {
-  const options = {
-    hostname: 'localhost',
-    port: 3001,
-    path: req.url,
-    method: req.method,
-    headers: req.headers
-  };
+// Preview Endpoint (Reels / Posts / Stories)
+app.post("/api/preview", async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
 
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
-  });
-
-  req.pipe(proxyReq, { end: true });
-
-  proxyReq.on('error', (err) => {
-    console.error('Downloader Proxy Error:', err.message);
-    if (!res.headersSent) {
-      res.status(503).json({ error: 'Instagram service is offline. Please ensure the backend is running on port 3001.' });
+    // Handle Stories
+    if (url.includes("/stories/")) {
+      const story = await fetchStoryByUrl(url);
+      return res.json({
+        type: story.type === "video" ? "video" : "image",
+        items: [{ id: 0, type: story.type, thumbnail: story.thumbnail || story.url, mediaUrl: story.url, shortcode: null }],
+        shortcode: null
+      });
     }
-  });
-};
 
-// Mount proxy for specific routes
-app.all('/api/preview', forwardToDownloader);
-app.all('/api/download', forwardToDownloader);
-app.all('/resolve', forwardToDownloader);
+    // Handle Posts/Reels/IGTV
+    const match = url.match(/\/(reel|p|tv)\/([^/?]+)/);
+    if (!match) return res.status(400).json({ error: "Invalid Instagram URL" });
 
-// Sitemap.xml serving
-app.get('/sitemap.xml', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+    const shortcode = match[2];
+    logger.info(`📸 Fetching preview for: ${shortcode}`);
+
+    const media = await fetchMediaByShortcode(shortcode);
+
+    // Carousel
+    if (media.carousel_media?.length > 0) {
+      const items = media.carousel_media.map((item, idx) => ({
+        id: idx,
+        type: item.video_versions?.[0] ? "video" : "image",
+        thumbnail: item.image_versions2?.candidates?.[0]?.url,
+        mediaUrl: item.video_versions?.[0]?.url || item.image_versions2?.candidates?.[0]?.url,
+        shortcode
+      }));
+      return res.json({ type: "carousel", items, shortcode });
+    }
+
+    // Single Video
+    if (media.video_versions?.[0]) {
+      return res.json({
+        type: "video",
+        items: [{ id: 0, type: "video", thumbnail: media.image_versions2?.candidates?.[0]?.url, mediaUrl: media.video_versions[0].url, shortcode }],
+        shortcode
+      });
+    }
+
+    // Single Image
+    if (media.image_versions2?.candidates?.[0]) {
+      const imgUrl = media.image_versions2.candidates[0].url;
+      return res.json({
+        type: "image",
+        items: [{ id: 0, type: "image", thumbnail: imgUrl, mediaUrl: imgUrl, shortcode }],
+        shortcode
+      });
+    }
+
+    throw new Error("No media found in response");
+  } catch (err) {
+    logger.error(`Preview error: ${err.message}`);
+    res.status(500).json({ error: err.message || "Failed to fetch media" });
+  }
 });
 
-// Robots.txt serving
-app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
-  res.send(`User-agent: *
-Allow: /
-Disallow: /api/
-Disallow: /admin/
+// Download / Resolve Endpoint
+app.post("/resolve", async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || !resolver) return res.status(400).json({ error: "Invalid request" });
+    await resolver(url, res);
+  } catch (err) {
+    logger.error(`Resolve error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-Sitemap: ${process.env.SITE_URL}/sitemap.xml`);
+// Frontend Individual Item Download
+app.post("/api/download", async (req, res) => {
+  try {
+    const { url, itemIndex } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
+
+    if (itemIndex !== undefined && itemIndex !== null) {
+      const match = url.match(/\/(reel|p|tv)\/([^/?]+)/);
+      if (match) {
+        const media = await fetchMediaByShortcode(match[2]);
+        if (media.carousel_media?.[itemIndex]) {
+          const item = media.carousel_media[itemIndex];
+          const mediaUrl = item.video_versions?.[0]?.url || item.image_versions2?.candidates?.[0]?.url;
+
+          if (mediaUrl) {
+            const { default: axios } = await import("axios");
+            const response = await axios.get(mediaUrl, { responseType: "stream" });
+            res.setHeader("Content-Disposition", `attachment; filename=media_${itemIndex}.${item.video_versions?.[0] ? 'mp4' : 'jpg'}`);
+            return response.data.pipe(res);
+          }
+        }
+      }
+    }
+
+    // Default to full resolver
+    await resolver(url, res);
+  } catch (err) {
+    logger.error(`Download error: ${err.message}`);
+    res.status(500).json({ error: "Download failed" });
+  }
 });
 
 // ============================================
-// ERROR HANDLING
+// STATIC ASSETS
 // ============================================
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Endpoint not found',
-    path: req.path
-  });
+app.get("/sitemap.xml", (req, res) => res.sendFile(path.join(__dirname, "public", "sitemap.xml")));
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${process.env.SITE_URL}/sitemap.xml`);
 });
+app.get("/health", (req, res) => res.json({ status: "ok" }));
 
-// Global error handler
+// ============================================
+// GLOBAL ERROR HANDLER (Ensures JSON responses)
+// ============================================
 app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', {
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method
-  });
-
+  logger.error(`Unhandled Error: ${err.message}`);
   res.status(err.status || 500).json({
     success: false,
-    error: process.env.NODE_ENV === 'production'
-      ? 'Internal server error'
-      : err.message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    error: err.message || "Internal Server Error"
   });
 });
 
-// ============================================
-// GRACEFUL SHUTDOWN
-// ============================================
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
-  server.close(() => {
-    logger.info('HTTP server closed');
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  logger.info('SIGINT signal received: closing HTTP server');
-  server.close(() => {
-    logger.info('HTTP server closed');
-    process.exit(0);
-  });
-});
 
 // ============================================
 // START SERVER
 // ============================================
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   logger.info(`
-╔════════════════════════════════════════════╗
-║   INSTAMINSTA BLOG API SERVER STARTED     ║
-╠════════════════════════════════════════════╣
-║  Environment: ${process.env.NODE_ENV?.padEnd(29)} ║
-║  Port:        ${PORT.toString().padEnd(29)} ║
-║  URL:         ${process.env.SITE_URL?.padEnd(29)} ║
-║  Time:        ${new Date().toISOString().padEnd(29)} ║
-╚════════════════════════════════════════════╝
+🚀 UNIFIED SERVER STARTED
+---------------------------
+Port:    ${PORT}
+Mode:    ${process.env.NODE_ENV || 'development'}
+Blog:    /api/blog
+Downloader: /api/preview
   `);
-
-  logger.info('API Endpoints:');
-  logger.info('  POST /api/blog/publish');
-  logger.info('  GET  /api/sitemap/update');
-  logger.info('  GET  /api/blog/stats');
-  logger.info('  GET  /api/blog/health');
-  logger.info('  GET  /health');
-  logger.info('  GET  /sitemap.xml');
-  logger.info('  GET  /robots.txt');
 });
 
-module.exports = app;
+export default app;
