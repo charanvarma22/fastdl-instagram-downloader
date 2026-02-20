@@ -175,8 +175,10 @@ async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
                 "Referer": "https://www.instagram.com/",
                 "Accept": "*/*"
             },
-            timeout: 20000
+            timeout: 20000,
+            validateStatus: (status) => status === 200 // Force error for any non-200
         });
+
         response.data.pipe(res);
     } catch (err) {
         console.error(`🔴 Direct Stream Failed for ${filename}:`, err.message);

@@ -29,7 +29,8 @@ export async function streamZip(items, res) {
                     "Referer": "https://www.instagram.com/",
                     "Accept": "*/*"
                 },
-                timeout: 20000
+                timeout: 20000,
+                validateStatus: (status) => status === 200
             });
             archive.append(response.data, { name: `media_${i}.${ext}` });
             i++;
