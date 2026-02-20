@@ -51,23 +51,35 @@ export function streamWithYtDlp(url, res, filename) {
     console.log(`📡 [yt-dlp] Starting forced MP4 stream for ${url}...`);
 
     const ytDlp = spawn("yt-dlp", args);
+
+    ytDlp.on("error", (err) => {
+        console.error("❌ [yt-dlp] Spawn Error:", err.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: "yt-dlp is not installed on the server. Please run: sudo apt install yt-dlp" });
+        }
+    });
+
     ytDlp.stdout.pipe(res);
 
     ytDlp.stderr.on("data", (data) => {
         const msg = data.toString();
         if (msg.includes("ERROR") || msg.includes("error")) {
-            console.error("yt-dlp Error:", msg);
+            console.error("yt-dlp Stderr Error:", msg);
         }
     });
 
     ytDlp.on("close", (code) => {
         if (code !== 0) {
-            console.error(`yt-dlp failed with code ${code}`);
-            if (!res.headersSent) res.status(500).json({ error: "Download stream failed" });
+            console.error(`yt-dlp failed with exit code ${code}`);
+            if (!res.headersSent) res.status(500).json({ error: "yt-dlp failed to process this video." });
+        } else {
+            console.log("✅ [yt-dlp] Stream completed successfully.");
         }
     });
 
-    res.on("close", () => ytDlp.kill());
+    res.on("close", () => {
+        if (ytDlp) ytDlp.kill();
+    });
 }
 
 async function handleStory(url, res) {
