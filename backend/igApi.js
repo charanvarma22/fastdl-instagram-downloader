@@ -12,18 +12,30 @@ export async function fetchMediaByShortcode(shortcode) {
 
             // Using 'Instagram Scraper Stable API' (RockSolid)
             // Host: instagram-scraper-2022.p.rapidapi.com
-            const options = {
-                method: 'GET',
-                url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/info_2/',
-                params: { url_post: `https://www.instagram.com/p/${shortcode}/` },
-                headers: {
-                    'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-                    'x-rapidapi-host': process.env.RAPIDAPI_HOST || 'instagram-scraper-2022.p.rapidapi.com'
-                }
-            };
+            // Trying multiple endpoints to be safe
+            const endpoints = [
+                { url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/info_2/', params: { url_post: `https://www.instagram.com/p/${shortcode}/` } },
+                { url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/media_info/', params: { shortcode: shortcode } },
+            ];
 
-            const response = await axios.request(options);
-            const data = response.data;
+            let response;
+            for (const ep of endpoints) {
+                try {
+                    response = await axios.get(ep.url, {
+                        params: ep.params,
+                        headers: {
+                            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+                            'x-rapidapi-host': process.env.RAPIDAPI_HOST || 'instagram-scraper-2022.p.rapidapi.com'
+                        }
+                    });
+                    if (response.data) break; // Success
+                } catch (e) {
+                    if (e.response && e.response.status === 404) continue; // Try next endpoint
+                    throw e; // Throw other errors (429, 500)
+                }
+            }
+
+            const data = response?.data;
 
             if (!data) throw new Error("API returned no data");
 
