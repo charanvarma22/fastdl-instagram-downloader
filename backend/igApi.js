@@ -7,15 +7,19 @@ import path from "path";
 export async function fetchMediaByShortcode(shortcode) {
     return new Promise((resolve, reject) => {
         const url = `https://www.instagram.com/p/${shortcode}/`;
-        console.log(`🚀 Fetching media for ${shortcode} via yt-dlp...`);
+
+        const args = ["--dump-json", "--no-warnings", "--no-playlist", url];
+
+        // Add authentication if provided
+        if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
+            console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Authenticated as ${process.env.IG_USERNAME})...`);
+            args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
+        } else {
+            console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Anonymous)...`);
+        }
 
         // Spawn yt-dlp process
-        // Flags:
-        // --dump-json: Get metadata JSON
-        // --no-warnings: Suppress warning logs
-        // --no-playlist: Only get the single video/post
-        // --cookies-from-browser: (Optional) could be added later if needed
-        const ytDlp = spawn("yt-dlp", ["--dump-json", "--no-warnings", "--no-playlist", url]);
+        const ytDlp = spawn("yt-dlp", args);
 
         let stdoutData = "";
         let stderrData = "";
