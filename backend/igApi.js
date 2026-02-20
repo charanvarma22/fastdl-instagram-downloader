@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from 'url';
+import axios from "axios";
 
 // Fix __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -43,12 +44,24 @@ export async function fetchMediaByShortcode(shortcode) {
             stderrData += data.toString();
         });
 
-        ytDlp.on("close", (code) => {
+        ytDlp.on("close", async (code) => {
             if (code !== 0) {
                 console.error(`❌ yt-dlp failed with code ${code}`);
                 console.error("Stderr:", stderrData);
 
                 // Detailed error handling
+                // FALLBACK: If yt-dlp fails to find video formats, it might be an image post it can't handle
+                if (stderrData.includes("No video formats found")) {
+                    console.log("⚠️ No video formats found - attempting Image fallback via HTML scraping...");
+                    try {
+                        const imageData = await fetchImageViaHtml(shortcode, url);
+                        return resolve(imageData);
+                    } catch (fallbackErr) {
+                        // Fall through to reject
+                        console.error("Fallback failed:", fallbackErr.message);
+                    }
+                }
+
                 if (stderrData.includes("404")) {
                     return reject({
                         code: "NOT_FOUND",
@@ -93,6 +106,61 @@ export async function fetchMediaByShortcode(shortcode) {
         }, 30000);
     });
 }
+
+// Fallback for Image Posts (since yt-dlp often fails on them)
+async function fetchImageViaHtml(shortcode, url) {
+    try {
+        const cookiesPath = path.join(__dirname, "cookies.txt");
+        let cookieHeader = "";
+
+        // Parse cookies.txt roughly to Cookie header
+        if (fs.existsSync(cookiesPath)) {
+            const cookieContent = fs.readFileSync(cookiesPath, 'utf8');
+            // Netscape cookie format: domain flag path secure expiration name value
+            const lines = cookieContent.split('\n');
+            const cookies = [];
+            for (const line of lines) {
+                if (line.startsWith('#') || !line.trim()) continue;
+                const parts = line.split('\t');
+                if (parts.length >= 7) {
+                    cookies.push(`${parts[5]}=${parts[6].trim()}`);
+                }
+            }
+            cookieHeader = cookies.join('; ');
+        }
+
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        };
+        if (cookieHeader) headers['Cookie'] = cookieHeader;
+
+        const response = await axios.get(url, { headers });
+        const html = response.data;
+
+        // Extract og:image
+        const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/);
+        if (!ogImageMatch) throw new Error("Could not find og:image in HTML");
+
+        const imageUrl = ogImageMatch[1].replace(/&amp;/g, '&');
+
+        return {
+            shortcode: shortcode,
+            video_versions: [],
+            image_versions2: {
+                candidates: [{ url: imageUrl }]
+            },
+            carousel_media: [],
+            derived_from_html: true // Flag to tell resolver to use direct download
+        };
+
+    } catch (err) {
+        console.error("HTML Fallback Failed:", err.message);
+        throw err;
+    }
+}
+
 
 function transformYtDlpResponse(data, shortcode) {
     // Determine type

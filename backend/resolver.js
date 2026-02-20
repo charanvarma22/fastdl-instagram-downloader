@@ -91,27 +91,50 @@ async function handlePost(url, res) {
 
         if (media.carousel_media && media.carousel_media.length > 0) {
             // For zip, we pass the MEDIA object to streamZip
-            // streamZip likely uses axios. We need to fix streamZip too eventually
-            // For now, let's hope axios works for public images, or failed here.
             return streamZip(media.carousel_media, res);
         }
 
         // Single Media
         if (media.video_versions && media.video_versions.length > 0) {
-            // It's a video
+            // It's a video - assume yt-dlp works for videos
             streamWithYtDlp(url, res, "post_video.mp4");
         } else {
             // It's an image
-            // yt-dlp might download image if we ask it to?
-            // Or we use the URL from metadata (CDN might block)
+            // If it came from HTML fallback, we MUST use the direct URL
+            if (media.derived_from_html) {
+                const imgUrl = media.image_versions2.candidates[0].url;
+                return streamDirect(imgUrl, res, "post_image.jpg");
+            }
 
-            // Try yt-dlp streaming for image?
-            // yt-dlp default for image post downloads the image.
+            // Otherwise, try streaming with yt-dlp (standard flow)
+            // But honestly, if it's an image, direct streaming via axios is often safer if we have the URL
+            // Let's rely on the URL if present
+            if (media.image_versions2 && media.image_versions2.candidates.length > 0) {
+                const imgUrl = media.image_versions2.candidates[0].url;
+                return streamDirect(imgUrl, res, "post_image.jpg");
+            }
+
+            // Fallback to yt-dlp stream if no URL (unlikely)
             streamWithYtDlp(url, res, "post_image.jpg");
         }
 
     } catch (e) {
         handleError(e, res);
+    }
+}
+
+
+async function streamDirect(url, res, filename) {
+    try {
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        // We can set Content-Type if we knew it, but axios stream is fine
+
+        const response = await axios.get(url, { responseType: "stream" });
+        response.data.pipe(res);
+    } catch (err) {
+        console.error("Direct Stream Failed:", err.message);
+        // Try fallback to yt-dlp if direct stream fails? Not for images usually.
+        res.status(500).json({ error: "Failed to download image." });
     }
 }
 
