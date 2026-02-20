@@ -1,5 +1,10 @@
-
 import puppeteer from 'puppeteer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export async function fetchMediaByShortcode(shortcode) {
     let browser = null;
@@ -11,6 +16,7 @@ export async function fetchMediaByShortcode(shortcode) {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage'
             ]
         });
         const page = await browser.newPage();
@@ -18,10 +24,32 @@ export async function fetchMediaByShortcode(shortcode) {
         // essential: Set a real user agent
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+        // Set cookies if available
+        const cookiesPath = path.join(__dirname, "cookies.txt");
+        if (fs.existsSync(cookiesPath)) {
+            try {
+                const cookieContent = fs.readFileSync(cookiesPath, 'utf8');
+                const cookies = parseCookies(cookieContent);
+                if (cookies.length > 0) {
+                    console.log(`[Puppeteer] Loading ${cookies.length} cookies...`);
+                    await page.setCookie(...cookies);
+                }
+            } catch (e) {
+                console.error("[Puppeteer] Failed to load cookies:", e.message);
+            }
+        }
+
         const url = `https://www.instagram.com/p/${shortcode}/`;
         console.log(`[Puppeteer] Navigating to: ${url}`);
 
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+        // Wait for key elements to ensure page load (or valid 404)
+        try {
+            await page.waitForSelector('meta[property="og:image"]', { timeout: 10000 });
+        } catch (e) {
+            console.log("[Puppeteer] Meta tag not found immediately, checking page content...");
+        }
 
         // Extract OpenGraph data
         const data = await page.evaluate(() => {
@@ -40,7 +68,9 @@ export async function fetchMediaByShortcode(shortcode) {
                 media_type: 1, // Default to image
                 image_versions2: { candidates: [] },
                 video_versions: [],
-                caption: { text: title || description || '' }
+                carousel_media: [],
+                caption: { text: title || description || '' },
+                derived_from_html: true // Forces resolver to stream direct URL
             };
 
             if (imageUrl) {
@@ -55,22 +85,13 @@ export async function fetchMediaByShortcode(shortcode) {
                     height: 1080,
                     type: 101
                 });
-            } else if (type && type.includes('video')) {
-                // Try to find video tag if meta is missing but type says video
-                const videoTag = document.querySelector('video');
-                if (videoTag && videoTag.src) {
-                    result.media_type = 2;
-                    result.video_versions.push({
-                        url: videoTag.src,
-                        width: 1080,
-                        height: 1080,
-                        type: 101
-                    });
-                }
             }
 
             return result;
         });
+
+        // Add Shortcode to result
+        data.shortcode = shortcode;
 
         if (!data.image_versions2.candidates.length && !data.video_versions.length) {
             // Check for private account or login redirect
@@ -78,6 +99,8 @@ export async function fetchMediaByShortcode(shortcode) {
             if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
                 throw new Error("LOGIN_REQUIRED");
             }
+            // Take screenshot for debug if failing
+            // await page.screenshot({ path: 'debug_fail.png' });
             throw new Error("MEDIA_NOT_FOUND_OR_PRIVATE");
         }
 
@@ -86,17 +109,31 @@ export async function fetchMediaByShortcode(shortcode) {
 
     } catch (error) {
         console.error("[Puppeteer] Error:", error.message);
-        if (browser) {
-            const pages = await browser.pages();
-            if (pages.length > 0) {
-                await pages[0].screenshot({ path: 'error_screenshot.png', fullPage: true });
-                console.log("[Puppeteer] Saved error_screenshot.png");
-            }
-        }
         throw error;
     } finally {
         if (browser) {
             await browser.close();
         }
     }
+}
+
+function parseCookies(fileContent) {
+    const cookies = [];
+    const lines = fileContent.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('#') || !line.trim()) continue;
+        const parts = line.split('\t');
+        if (parts.length >= 7) {
+            // Netscape format
+            cookies.push({
+                domain: parts[0],
+                path: parts[2],
+                secure: parts[3] === 'TRUE',
+                expires: parseInt(parts[4]) || undefined,
+                name: parts[5],
+                value: parts[6].trim()
+            });
+        }
+    }
+    return cookies;
 }
