@@ -101,6 +101,7 @@ app.post("/api/preview", async (req, res) => {
     logger.info(`📸 Fetching preview for: ${shortcode}`);
 
     const media = await fetchMediaByShortcode(shortcode);
+    logger.info(`🔍 [PREVIEW] Detected Type: ${media.type} | Videos: ${media.video_versions?.length} | Images: ${media.image_versions2?.candidates?.length} | Carousel: ${media.carousel_media?.length}`);
 
     // Carousel
     if (media.carousel_media?.length > 0) {

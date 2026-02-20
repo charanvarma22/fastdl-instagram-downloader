@@ -276,5 +276,8 @@ function transformRapidAPIResponse(data, shortcode) {
         result.image_versions2.candidates.push({ url: bestImg });
     }
 
+    // Set top-level type for server preview logic
+    result.type = isVideo ? "video" : "image";
+
     return result;
 }
