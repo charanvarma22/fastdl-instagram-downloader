@@ -184,7 +184,8 @@ app.post("/api/download", async (req, res) => {
                 "Referer": "https://www.instagram.com/",
                 "Accept": "*/*"
               },
-              timeout: 30000
+              timeout: 30000,
+              validateStatus: (status) => status === 200
             });
             res.setHeader("Content-Disposition", `attachment; filename=media_${itemIndex}.${isVideo ? 'mp4' : 'jpg'}`);
             return response.data.pipe(res);

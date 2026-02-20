@@ -39,10 +39,9 @@ function streamWithYtDlp(url, res, filename) {
 
     // Set Headers
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    // We don't know Content-Type ahead of time easily with stdout, but browsers handle binaries well.
-    // We can try to guess or let yt-dlp handle it.
+    res.setHeader("Content-Type", filename.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
 
-    console.log(`DATA STREAM: Starting yt-dlp stream for ${url}`);
+    console.log(`📡 [yt-dlp] Starting direct stream for ${url}...`);
 
     const ytDlp = spawn("yt-dlp", args);
 
