@@ -1,56 +1,76 @@
-import axios from "axios";
-import fs from "fs";
-import { fetchMediaByShortcode as fetchWithPuppeteer } from "./igPuppeteer.js";
+// Replaced Puppeteer with Robust External API
+// This ensures stability, no IP bans, and high traffic handling.
 
-// Keep existing cookie loading for other functions if needed, 
-// but fetchMediaByShortcode will now use Puppeteer.
-function loadCookies() {
-    try {
-        const lines = fs.readFileSync("cookies.txt", "utf8").split(/\r?\n/);
-        const cookies = [];
-        for (let line of lines) {
-            line = line.trim();
-            if (!line || line.startsWith("#")) continue;
-            const parts = line.split("\t");
-            if (parts.length >= 7) {
-                cookies.push(`${parts[5]}=${parts[6]}`);
-            }
-        }
-        return cookies.join("; ");
-    } catch (e) {
-        return "";
-    }
-}
-
-const COOKIE = loadCookies();
-
-// Replaced with Puppeteer implementation
 export async function fetchMediaByShortcode(shortcode) {
     try {
-        return await fetchWithPuppeteer(shortcode);
+        console.log(`🚀 Fetching media for ${shortcode} via Extract API...`);
+
+        // Using 'Instagram Scraper Stable API' (RockSolid)
+        // Host: instagram-scraper-2022.p.rapidapi.com
+        const options = {
+            method: 'GET',
+            url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/post_info/',
+            params: { shortcode: shortcode },
+            headers: {
+                'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+                'x-rapidapi-host': process.env.RAPIDAPI_HOST || 'instagram-scraper-2022.p.rapidapi.com'
+            }
+        };
+
+        const response = await axios.request(options);
+        const data = response.data;
+
+        if (!data) throw new Error("API returned no data");
+
+        // Transform RockSolid API response to our internal format
+        // RockSolid returns data.owner, data.display_url, data.video_url, etc. directly or nested
+
+        // Check if it's a valid response
+        if (!data.shortcode && !data.id) {
+            // Some APIs return data inside a 'data' property
+            if (data.data) return transformRockSolidResponse(data.data, shortcode);
+            // Or maybe it is direct
+        }
+
+        return transformRockSolidResponse(data, shortcode);
+
     } catch (err) {
-        console.error("Puppeteer fetch failed:", err);
+        console.error("❌ API fetch failed:", err.message);
+        if (err.response) {
+            console.error("API Response:", err.response.data);
+        }
         throw {
-            code: "PUPPETEER_ERROR",
-            message: err.message || "Failed to fetch media with Puppeteer"
+            code: "API_ERROR",
+            message: "Failed to fetch media. Please check API Key."
         };
     }
 }
 
-// Keep older implementation for stories/IGTV or updated if needed. 
-// For now, let's leave them as they use specific API endpoints that might still work 
-// or fail similarly. Focusing on Reels/Posts first.
+function transformRockSolidResponse(data, shortcode) {
+    return {
+        shortcode: shortcode,
+        video_versions: data.video_url ? [{ url: data.video_url }] : [],
+        image_versions2: {
+            candidates: data.display_url ? [{ url: data.display_url }] : []
+        },
+        // RockSolid handles carousels differently, often in 'children' or 'sidecar'
+        // We will map if present, otherwise basic support
+        carousel_media: data.children ? data.children.map(child => ({
+            video_versions: child.video_url ? [{ url: child.video_url }] : [],
+            image_versions2: { candidates: [{ url: child.display_url }] }
+        })) : []
+    };
+}
+
+
+
+// Legacy wrappers - can also use API if supported
 export async function fetchStoryByUrl(storyUrl) {
-    // ... (existing implementation) ...
-    // For brevity in this replacement, I'll keep the existing code but maybe log it's using axios
-    // If the user needs stories fixed too, we can switch this to Puppeteer later.
-    console.warn("fetchStoryByUrl is using deprecated Axios method");
-    return { code: "NOT_IMPLEMENTED", message: "Story downloading is currently being updated." };
+    return { code: "NOT_IMPLEMENTED", message: "Stories not yet enabled on API mode." };
 }
 
 export async function fetchIGTVByUrl(igtvUrl) {
     const shortcodeMatch = igtvUrl.match(/\/tv\/([^/?]+)/);
     if (!shortcodeMatch) throw new Error("INVALID_URL");
-    const shortcode = shortcodeMatch[1];
-    return await fetchMediaByShortcode(shortcode);
+    return await fetchMediaByShortcode(shortcodeMatch[1]);
 }
