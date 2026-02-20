@@ -1,115 +1,118 @@
-import axios from "axios";
-// Replaced Puppeteer with Robust External API
-// This ensures stability, no IP bans, and high traffic handling.
+import { spawn } from "child_process";
+import path from "path";
+
+// robust yt-dlp wrapper
+// This ensures stability, no IP bans (until heavy usage), and high traffic handling via CLI.
 
 export async function fetchMediaByShortcode(shortcode) {
-    const retries = 3;
-    let lastError = null;
+    return new Promise((resolve, reject) => {
+        const url = `https://www.instagram.com/p/${shortcode}/`;
+        console.log(`🚀 Fetching media for ${shortcode} via yt-dlp...`);
 
-    for (let i = 0; i < retries; i++) {
-        try {
-            console.log(`🚀 Fetching media for ${shortcode} via Extract API (Attempt ${i + 1}/${retries})...`);
+        // Spawn yt-dlp process
+        // Flags:
+        // --dump-json: Get metadata JSON
+        // --no-warnings: Suppress warning logs
+        // --no-playlist: Only get the single video/post
+        // --cookies-from-browser: (Optional) could be added later if needed
+        const ytDlp = spawn("yt-dlp", ["--dump-json", "--no-warnings", "--no-playlist", url]);
 
-            // Using 'Instagram Scraper Stable API' (RockSolid)
-            // Host: instagram-scraper-2022.p.rapidapi.com
-            // Trying multiple endpoints to be safe
-            const endpoints = [
-                { url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/info_2/', params: { url_post: `https://www.instagram.com/p/${shortcode}/` } },
-                { url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/media_info/', params: { shortcode: shortcode } },
-            ];
+        let stdoutData = "";
+        let stderrData = "";
 
-            let response;
-            for (const ep of endpoints) {
-                try {
-                    response = await axios.get(ep.url, {
-                        params: ep.params,
-                        headers: {
-                            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-                            'x-rapidapi-host': process.env.RAPIDAPI_HOST || 'instagram-scraper-2022.p.rapidapi.com'
-                        }
+        ytDlp.stdout.on("data", (data) => {
+            stdoutData += data.toString();
+        });
+
+        ytDlp.stderr.on("data", (data) => {
+            stderrData += data.toString();
+        });
+
+        ytDlp.on("close", (code) => {
+            if (code !== 0) {
+                console.error(`❌ yt-dlp failed with code ${code}`);
+                console.error("Stderr:", stderrData);
+
+                // Detailed error handling
+                if (stderrData.includes("404")) {
+                    return reject({
+                        code: "NOT_FOUND",
+                        message: "Post not found or private.",
+                        originalError: stderrData
                     });
-                    if (response.data) break; // Success
-                } catch (e) {
-                    if (e.response && e.response.status === 404) continue; // Try next endpoint
-                    throw e; // Throw other errors (429, 500)
                 }
-            }
-
-            const data = response?.data;
-
-            if (!data) throw new Error("API returned no data");
-
-            // Transform RockSolid API response to our internal format
-            // RockSolid returns data.owner, data.display_url, data.video_url, etc. directly or nested
-
-            // Check if it's a valid response
-            if (!data.shortcode && !data.id) {
-                // Some APIs return data inside a 'data' property
-                if (data.data) return transformRockSolidResponse(data.data, shortcode);
-                // Or maybe it is direct
-            }
-
-            return transformRockSolidResponse(data, shortcode);
-
-        } catch (err) {
-            lastError = err;
-            console.error(`❌ Attempt ${i + 1} failed:`, err.message);
-
-            if (err.response) {
-                console.error("API Response Status:", err.response.status);
-                // If Rate Limited (429), wait and retry
-                if (err.response.status === 429) {
-                    console.warn("⚠️ Rate Limit Detected. Waiting 2s...");
-                    await new Promise(res => setTimeout(res, 2000 * (i + 1))); // Exponential backoff
-                    continue;
+                if (stderrData.includes("Too Many Requests") || stderrData.includes("429")) {
+                    return reject({
+                        code: "RATE_LIMIT",
+                        message: "Server busy (IP Rate Limit). Try again later.",
+                        originalError: stderrData
+                    });
                 }
-                // If 404, it might be private or deleted, don't retry
-                if (err.response.status === 404) break;
-            } else {
-                // Network error, maybe retry?
-                await new Promise(res => setTimeout(res, 1000));
+
+                return reject({
+                    code: "DOWNLOAD_FAILED",
+                    message: "Failed to fetch media.",
+                    originalError: stderrData
+                });
             }
-        }
-    }
 
-    // If we are here, all retries failed
-    console.error("❌ All API fetch attempts failed.");
+            try {
+                // yt-dlp might output multiple JSON objects if it encounters a playlist-like structure
+                // We only want the first valid JSON
+                const jsonOutput = JSON.parse(stdoutData);
+                resolve(transformYtDlpResponse(jsonOutput, shortcode));
+            } catch (err) {
+                console.error("❌ Failed to parse yt-dlp JSON:", err.message);
+                reject({
+                    code: "PARSE_ERROR",
+                    message: "Failed to parse media data.",
+                    originalError: err.message
+                });
+            }
+        });
 
-    let userMessage = "Failed to fetch media. Please check API Key.";
-    if (lastError?.response?.status === 429) {
-        userMessage = "Server busy (Rate Limit). Please try again in a moment.";
-    } else if (lastError?.response?.status === 404) {
-        userMessage = "Post not found or private.";
-    }
-
-    throw {
-        code: "API_ERROR",
-        message: userMessage,
-        originalError: lastError?.message
-    };
+        // Timeout to prevent hanging processes (30 seconds)
+        setTimeout(() => {
+            ytDlp.kill();
+            reject({ code: "TIMEOUT", message: "Request timed out." });
+        }, 30000);
+    });
 }
 
-function transformRockSolidResponse(data, shortcode) {
+function transformYtDlpResponse(data, shortcode) {
+    // Determine type
+    // yt-dlp returns 'entries' for carousels sometimes, or explicit formats
+
+    // Check for carousel (yt-dlp often creates a playlist for carousels)
+    if (data._type === 'playlist' && data.entries) {
+        return {
+            shortcode: shortcode,
+            carousel_media: data.entries.map(entry => ({
+                video_versions: entry.ext === 'mp4' || entry.vcodec !== 'none' ? [{ url: entry.url }] : [],
+                image_versions2: { candidates: [{ url: entry.thumbnail || entry.url }] }
+            })),
+            video_versions: [], // It's a carousel container
+            image_versions2: { candidates: [] }
+        };
+    }
+
+    // Single Media
+    // Check if it has video codec
+    const isVideo = data.ext === 'mp4' || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
+
     return {
         shortcode: shortcode,
-        video_versions: data.video_url ? [{ url: data.video_url }] : [],
+        video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
-            candidates: data.display_url ? [{ url: data.display_url }] : []
+            candidates: data.thumbnail ? [{ url: data.thumbnail }] : []
         },
-        // RockSolid handles carousels differently, often in 'children' or 'sidecar'
-        // We will map if present, otherwise basic support
-        carousel_media: data.children ? data.children.map(child => ({
-            video_versions: child.video_url ? [{ url: child.video_url }] : [],
-            image_versions2: { candidates: [{ url: child.display_url }] }
-        })) : []
+        carousel_media: []
     };
 }
 
-
-
-// Legacy wrappers - can also use API if supported
+// Legacy wrappers
 export async function fetchStoryByUrl(storyUrl) {
-    return { code: "NOT_IMPLEMENTED", message: "Stories not yet enabled on API mode." };
+    return { code: "NOT_IMPLEMENTED", message: "Stories not yet enabled on this version." };
 }
 
 export async function fetchIGTVByUrl(igtvUrl) {
