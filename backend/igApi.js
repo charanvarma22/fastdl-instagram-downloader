@@ -12,130 +12,105 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// robust yt-dlp wrapper
-// This ensures stability, no IP bans (until heavy usage), and high traffic handling via CLI.
-
+/**
+ * Main function to fetch Instagram media.
+ * Tries yt-dlp -> RapidAPI -> Puppeteer fallback.
+ */
 export async function fetchMediaByShortcode(shortcode) {
     return new Promise((resolve, reject) => {
         const url = `https://www.instagram.com/p/${shortcode}/`;
-
         const args = ["--dump-json", "--no-warnings", "--no-playlist", url];
-
-        // Path to cookies.txt (in the same directory as this file)
         const cookiesPath = path.join(__dirname, "cookies.txt");
 
+        let ytDlpProcess = null;
+
+        // Watchdog timer to prevent hanging requests
+        let timer = setTimeout(() => {
+            console.error(`🔴 [WATCHDOG] TIMEOUT: ${shortcode} reached 60s limit.`);
+            if (ytDlpProcess) ytDlpProcess.kill();
+            reject({ code: "TIMEOUT", message: "Download process timed out (60s)." });
+        }, 60000);
+
+        const cleanResolve = (data) => {
+            clearTimeout(timer);
+            resolve(data);
+        };
+
+        const cleanReject = (error) => {
+            clearTimeout(timer);
+            reject(error);
+        };
+
         if (fs.existsSync(cookiesPath)) {
-            console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Using cookies.txt)...`);
+            console.log(`🚀 [yt-dlp] Starting for ${shortcode} (With cookies)...`);
             args.push("--cookies", cookiesPath);
         } else if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
-            console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Authenticated as ${process.env.IG_USERNAME})...`);
+            console.log(`🚀 [yt-dlp] Starting for ${shortcode} (Auth fallback)...`);
             args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
         } else {
-            console.log(`🚀 Fetching media for ${shortcode} via yt-dlp (Anonymous)...`);
+            console.log(`🚀 [yt-dlp] Starting for ${shortcode} (Anonymous)...`);
         }
 
-        // Spawn yt-dlp process
-        const ytDlp = spawn("yt-dlp", args);
-
+        ytDlpProcess = spawn("yt-dlp", args);
         let stdoutData = "";
         let stderrData = "";
 
-        ytDlp.stdout.on("data", (data) => {
-            stdoutData += data.toString();
-        });
+        ytDlpProcess.stdout.on("data", (data) => { stdoutData += data.toString(); });
+        ytDlpProcess.stderr.on("data", (data) => { stderrData += data.toString(); });
 
-        ytDlp.stderr.on("data", (data) => {
-            stderrData += data.toString();
-        });
+        ytDlpProcess.on("close", async (code) => {
+            console.log(`📡 [yt-dlp] Process exited with code ${code} for ${shortcode}`);
 
-        ytDlp.on("close", async (code) => {
-            if (code !== 0) {
-                console.error(`❌ yt-dlp failed with code ${code}`);
-                console.error("Stderr:", stderrData);
-
-                // FALLBACK: If yt-dlp fails (No video formats or 403 or anything for posts), try Puppeteer
-                // Especially for "No video formats found" or general scraping failure on Posts
-                if (stderrData.includes("No video formats found") || stderrData.includes("Unable to download") || code !== 0) {
-                    console.warn(`⚠️ yt-dlp failed (Code ${code}). Trying RapidAPI...`);
-
-                    // 2. TRY RAPIDAPI (Paid/Quota-based)
-                    if (process.env.RAPIDAPI_KEY) {
-                        try {
-                            const rapidData = await fetchViaRapidAPI(shortcode);
-                            console.log("✅ SUCCESS via RapidAPI!");
-                            return resolve(rapidData);
-                        } catch (rapidErr) {
-                            console.warn(`⚠️ RapidAPI failed: ${rapidErr.message}. Trying Puppeteer Fallback...`);
-                        }
-                    } else {
-                        console.log("No RAPIDAPI_KEY found. Skipping RapidAPI...");
-                    }
-
-                    console.log("⚠️ Switching to Puppeteer Fallback...");
-                    try {
-                        const puppeteerData = await fetchViaPuppeteer(shortcode);
-                        return resolve(puppeteerData);
-                    } catch (fallbackErr) {
-                        console.error("Puppeteer Fallback failed:", fallbackErr.message);
-                        return reject({
-                            code: "DOWNLOAD_FAILED",
-                            message: "Failed to fetch media (all methods failed).",
-                            originalError: fallbackErr.message
-                        });
-                    }
+            if (code === 0) {
+                try {
+                    const jsonOutput = JSON.parse(stdoutData);
+                    console.log(`✅ [yt-dlp] Success for ${shortcode}`);
+                    return cleanResolve(transformYtDlpResponse(jsonOutput, shortcode));
+                } catch (err) {
+                    console.error("❌ [yt-dlp] JSON Parse Error:", err.message);
                 }
-
-                if (stderrData.includes("404")) {
-                    return reject({
-                        code: "NOT_FOUND",
-                        message: "Post not found or private.",
-                        originalError: stderrData
-                    });
-                }
-                if (stderrData.includes("Too Many Requests") || stderrData.includes("429")) {
-                    return reject({
-                        code: "RATE_LIMIT",
-                        message: "Server busy (IP Rate Limit). Try again later.",
-                        originalError: stderrData
-                    });
-                }
-
-                return reject({
-                    code: "DOWNLOAD_FAILED",
-                    message: "Failed to fetch media.",
-                    originalError: stderrData
-                });
             }
 
+            // --- FALLBACK CHAIN ---
+            console.warn(`⚠️ [yt-dlp] Failed or empty results. Trying professional fallbacks...`);
+
+            // 1. RapidAPI
+            if (process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_KEY !== "PASTE_YOUR_KEY_HERE") {
+                try {
+                    const rapidData = await fetchViaRapidAPI(shortcode);
+                    console.log(`✅ [RapidAPI] Success for ${shortcode}`);
+                    return cleanResolve(rapidData);
+                } catch (rapidErr) {
+                    console.warn(`⚠️ [RapidAPI] Failed: ${rapidErr.message}`);
+                }
+            } else {
+                console.log("No valid RAPIDAPI_KEY. Skipping RapidAPI...");
+            }
+
+            // 2. Puppeteer (Final Attempt)
+            console.log(`🔄 [Puppeteer] Starting deep scraping for ${shortcode}...`);
             try {
-                // yt-dlp might output multiple JSON objects if it encounters a playlist-like structure
-                // We only want the first valid JSON
-                const jsonOutput = JSON.parse(stdoutData);
-                resolve(transformYtDlpResponse(jsonOutput, shortcode));
-            } catch (err) {
-                console.error("❌ Failed to parse yt-dlp JSON:", err.message);
-                reject({
-                    code: "PARSE_ERROR",
-                    message: "Failed to parse media data.",
-                    originalError: err.message
+                const puppeteerData = await fetchViaPuppeteer(shortcode);
+                console.log(`✅ [Puppeteer] Success for ${shortcode}`);
+                return cleanResolve(puppeteerData);
+            } catch (fallbackErr) {
+                console.error(`❌ [ALL METHODS FAILED] for ${shortcode}: ${fallbackErr.message}`);
+                return cleanReject({
+                    code: "DOWNLOAD_FAILED",
+                    message: "Failed to fetch media from all available methods.",
+                    originalError: fallbackErr.message
                 });
             }
         });
 
-        // Timeout to prevent hanging processes (45 seconds - increased for Puppeteer chance)
-        setTimeout(() => {
-            ytDlp.kill();
-            reject({ code: "TIMEOUT", message: "Request timed out." });
-        }, 45000);
+        ytDlpProcess.on("error", (err) => {
+            console.error("❌ [yt-dlp] Process spawn error:", err.message);
+            // Don't reject yet, let the handler above move to fallback
+        });
     });
 }
 
-
 function transformYtDlpResponse(data, shortcode) {
-    // Determine type
-    // yt-dlp returns 'entries' for carousels sometimes, or explicit formats
-
-    // Check for carousel (yt-dlp often creates a playlist for carousels)
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
@@ -143,13 +118,11 @@ function transformYtDlpResponse(data, shortcode) {
                 video_versions: entry.ext === 'mp4' || entry.vcodec !== 'none' ? [{ url: entry.url }] : [],
                 image_versions2: { candidates: [{ url: entry.thumbnail || entry.url }] }
             })),
-            video_versions: [], // It's a carousel container
+            video_versions: [],
             image_versions2: { candidates: [] }
         };
     }
 
-    // Single Media
-    // Check if it has video codec
     const isVideo = data.ext === 'mp4' || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
 
     return {
@@ -162,7 +135,6 @@ function transformYtDlpResponse(data, shortcode) {
     };
 }
 
-// Story support via Puppeteer
 export async function fetchStoryByUrl(storyUrl) {
     try {
         console.log(`🎬 Fetching story via Puppeteer: ${storyUrl}`);
@@ -184,7 +156,7 @@ async function fetchViaRapidAPI(shortcode) {
     const key = process.env.RAPIDAPI_KEY;
     const host = process.env.RAPIDAPI_HOST || "instagram-scraper-2022.p.rapidapi.com";
 
-    console.log(`🌐 Fetching via RapidAPI (${host})...`);
+    console.log(`🌐 [RapidAPI] Connecting to ${host}...`);
 
     const endpoints = [
         { url: `https://${host}/ig/info_2/`, params: { shortcode } },
@@ -207,7 +179,7 @@ async function fetchViaRapidAPI(shortcode) {
                 return transformRapidAPIResponse(response.data, shortcode);
             }
         } catch (e) {
-            console.warn(`RapidAPI endpoint ${ep.url} failed: ${e.message}`);
+            console.warn(`[RapidAPI] Endpoint ${ep.url} failed: ${e.message}`);
         }
     }
     throw new Error("RapidAPI failed to return data from all endpoints.");

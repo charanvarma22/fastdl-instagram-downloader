@@ -32,26 +32,33 @@ const pool = mysql.createPool({
 // ============================================
 const authenticateAPIKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
-  
+
   if (!apiKey) {
-    return res.status(401).json({ 
-      success: false, 
-      error: 'API key required' 
+    return res.status(401).json({
+      success: false,
+      error: 'API key required'
     });
   }
-  
+
   if (apiKey !== process.env.BLOG_API_KEY) {
-    return res.status(403).json({ 
-      success: false, 
-      error: 'Invalid API key' 
+    return res.status(403).json({
+      success: false,
+      error: 'Invalid API key'
     });
   }
-  
+
   next();
 };
 
 // Apply authentication to all routes
-router.use(authenticateAPIKey);
+// Apply authentication to administrative routes
+const adminRoutes = ['/publish', '/sitemap/update', '/stats'];
+router.use((req, res, next) => {
+  if (adminRoutes.some(path => req.path.startsWith(path))) {
+    return authenticateAPIKey(req, res, next);
+  }
+  next();
+});
 
 // ============================================
 // ENDPOINT: Publish New Blog
@@ -59,7 +66,7 @@ router.use(authenticateAPIKey);
 // ============================================
 router.post('/publish', async (req, res) => {
   const connection = await pool.getConnection();
-  
+
   try {
     const {
       title,
@@ -141,7 +148,7 @@ router.post('/publish', async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('Blog publish error:', error);
-    
+
     res.status(500).json({
       success: false,
       error: 'Failed to publish blog',
@@ -189,7 +196,7 @@ router.get('/sitemap/update', async (req, res) => {
 
   } catch (error) {
     console.error('Sitemap update error:', error);
-    
+
     res.status(500).json({
       success: false,
       error: 'Failed to update sitemap',
@@ -203,28 +210,28 @@ router.get('/sitemap/update', async (req, res) => {
 // ============================================
 function generateSitemapXML(blogs) {
   const baseUrl = process.env.SITE_URL || 'https://instaminsta.com';
-  
+
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-  
+
   // Homepage
   xml += '  <url>\n';
   xml += `    <loc>${baseUrl}/</loc>\n`;
   xml += '    <changefreq>daily</changefreq>\n';
   xml += '    <priority>1.0</priority>\n';
   xml += '  </url>\n';
-  
+
   // Blog listing page
   xml += '  <url>\n';
   xml += `    <loc>${baseUrl}/blog</loc>\n`;
   xml += '    <changefreq>daily</changefreq>\n';
   xml += '    <priority>0.9</priority>\n';
   xml += '  </url>\n';
-  
+
   // Individual blog posts
   blogs.forEach(blog => {
     const lastmod = (blog.updated_at || blog.created_at).toISOString().split('T')[0];
-    
+
     xml += '  <url>\n';
     xml += `    <loc>${baseUrl}/blog/${blog.slug}</loc>\n`;
     xml += `    <lastmod>${lastmod}</lastmod>\n`;
@@ -232,9 +239,9 @@ function generateSitemapXML(blogs) {
     xml += '    <priority>0.8</priority>\n';
     xml += '  </url>\n';
   });
-  
+
   xml += '</urlset>';
-  
+
   return xml;
 }
 
@@ -243,7 +250,7 @@ function generateSitemapXML(blogs) {
 // ============================================
 async function pingSearchEngines() {
   const sitemapUrl = encodeURIComponent(`${process.env.SITE_URL}/sitemap.xml`);
-  
+
   const pingUrls = [
     `https://www.google.com/ping?sitemap=${sitemapUrl}`,
     `https://www.bing.com/ping?sitemap=${sitemapUrl}`
@@ -286,7 +293,7 @@ router.get('/stats', async (req, res) => {
 
   } catch (error) {
     console.error('Stats fetch error:', error);
-    
+
     res.status(500).json({
       success: false,
       error: 'Failed to fetch statistics'
