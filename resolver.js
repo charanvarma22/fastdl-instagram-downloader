@@ -75,10 +75,10 @@ async function handleStory(url, res) {
         // Use post handling logic for story (single image or single video)
         if (media.video_versions && media.video_versions.length > 0) {
             const videoUrl = media.video_versions[0].url;
-            return streamDirect(videoUrl, res, "story_video.mp4");
+            return streamDirect(videoUrl, res, "story_video.mp4", url);
         } else {
             const imgUrl = media.image_versions2.candidates[0].url;
-            return streamDirect(imgUrl, res, "story_image.jpg");
+            return streamDirect(imgUrl, res, "story_image.jpg", url);
         }
     } catch (e) {
         handleError(e, res);
@@ -93,14 +93,14 @@ async function handleSingleMedia(url, res, defaultFilename = "media.mp4") {
         // Prefer Video
         if (media.video_versions && media.video_versions.length > 0) {
             const videoUrl = media.video_versions[0].url;
-            return streamDirect(videoUrl, res, defaultFilename);
+            return streamDirect(videoUrl, res, defaultFilename, url);
         }
 
         // Fallback to Image
         if (media.image_versions2 && media.image_versions2.candidates.length > 0) {
             const imgUrl = media.image_versions2.candidates[0].url;
             const ext = imgUrl.includes(".webp") ? "webp" : "jpg";
-            return streamDirect(imgUrl, res, defaultFilename.replace(".mp4", `.${ext}`));
+            return streamDirect(imgUrl, res, defaultFilename.replace(".mp4", `.${ext}`), url);
         }
 
         // Absolute fallback to yt-dlp scraping
@@ -127,13 +127,13 @@ async function handlePost(url, res) {
         // Single Media
         if (media.video_versions && media.video_versions.length > 0) {
             const videoUrl = media.video_versions[0].url;
-            return streamDirect(videoUrl, res, "post_video.mp4");
+            return streamDirect(videoUrl, res, "post_video.mp4", url);
         } else {
             // It's an image
             // If it came from HTML fallback, we MUST use the direct URL
             if (media.derived_from_html) {
                 const imgUrl = media.image_versions2.candidates[0].url;
-                return streamDirect(imgUrl, res, "post_image.jpg");
+                return streamDirect(imgUrl, res, "post_image.jpg", url);
             }
 
             // Otherwise, try streaming with yt-dlp (standard flow)
@@ -141,7 +141,7 @@ async function handlePost(url, res) {
             // Let's rely on the URL if present
             if (media.image_versions2 && media.image_versions2.candidates.length > 0) {
                 const imgUrl = media.image_versions2.candidates[0].url;
-                return streamDirect(imgUrl, res, "post_image.jpg");
+                return streamDirect(imgUrl, res, "post_image.jpg", url);
             }
 
             // Fallback to yt-dlp stream if no URL (unlikely)
@@ -154,25 +154,37 @@ async function handlePost(url, res) {
 }
 
 
-async function streamDirect(url, res, filename) {
+async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
     try {
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        // We can set Content-Type if we knew it, but axios stream is fine
+        const ext = path.extname(filename).toLowerCase();
+        const contentType = ext === '.mp4' ? 'video/mp4' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
 
-        const response = await axios.get(url, {
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", contentType);
+
+        const response = await axios.get(cdnUrl, {
             responseType: "stream",
             headers: {
                 "User-Agent": IG_USER_AGENT,
                 "Referer": "https://www.instagram.com/",
                 "Accept": "*/*"
             },
-            timeout: 30000
+            timeout: 20000
         });
         response.data.pipe(res);
     } catch (err) {
-        console.error("Direct Stream Failed:", err.message);
-        // Try fallback to yt-dlp if direct stream fails? Not for images usually.
-        res.status(500).json({ error: "Failed to download image." });
+        console.error(`🔴 Direct Stream Failed for ${filename}:`, err.message);
+
+        // Fail-Safe Fallback: If direct CDN link is blocked (403) or failed, use yt-dlp
+        if (originalUrl) {
+            console.log(`🔄 [FAIL-SAFE] Switching to yt-dlp for: ${originalUrl}`);
+            // Clear headers if they cause issues, though res.setHeader is fine to overwrite
+            return streamWithYtDlp(originalUrl, res, filename);
+        }
+
+        if (!res.headersSent) {
+            res.status(500).json({ error: "Failed to download media." });
+        }
     }
 }
 

@@ -215,8 +215,8 @@ function transformRapidAPIResponse(data, shortcode) {
             // Collect all image versions
             const imgCandidates = [
                 ...(node.image_versions2?.candidates || []),
-                ...(node.display_resources || []),
-                { url: node.display_url, width: node.dimensions?.width || 0 }
+                ...(node.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width })),
+                { url: node.display_url, width: node.dimensions?.width || 1080 } // High default for source
             ].filter(r => r && r.url);
 
             const bestImg = imgCandidates.length > 0
@@ -226,7 +226,7 @@ function transformRapidAPIResponse(data, shortcode) {
             // Collect all video versions
             const vidCandidates = [
                 ...(node.video_versions || []),
-                { url: node.video_url, width: node.dimensions?.width || 0 }
+                { url: node.video_url, width: node.dimensions?.width || 1080 }
             ].filter(v => v && v.url);
 
             const bestVid = vidCandidates.length > 0
@@ -259,8 +259,8 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const imgCandidates = [
         ...(item.image_versions2?.candidates || []),
-        ...(item.display_resources || []),
-        { url: item.display_url, width: item.dimensions?.width || 0 }
+        ...(item.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width })),
+        { url: item.display_url, width: item.dimensions?.width || 1080 }
     ].filter(r => r && r.url);
 
     const bestImg = imgCandidates.length > 0
