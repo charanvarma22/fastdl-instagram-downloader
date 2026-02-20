@@ -1,27 +1,28 @@
 #!/bin/bash
-echo "📦 Installing Puppeteer Dependencies..."
+echo "📦 Installing Puppeteer Dependencies (Ubuntu 24.04 Compatible)..."
 
 # Update package list
 sudo apt-get update
 
-# Install libraries required by Chrome/Puppeteer
+# Install libraries required by Chrome/Puppeteer on modern Ubuntu
 sudo apt-get install -y \
-    gconf-service \
-    libasound2 \
+    ca-certificates \
+    fonts-liberation \
+    libasound2t64 \
+    libatk-bridge2.0-0 \
     libatk1.0-0 \
-    liblibc6 \
     libc6 \
     libcairo2 \
     libcups2 \
     libdbus-1-3 \
     libexpat1 \
     libfontconfig1 \
+    libgbm1 \
     libgcc1 \
-    libgconf-2-4 \
-    libgdk-pixbuf2.0-0 \
     libglib2.0-0 \
     libgtk-3-0 \
     libnspr4 \
+    libnss3 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libstdc++6 \
@@ -38,13 +39,8 @@ sudo apt-get install -y \
     libxrender1 \
     libxss1 \
     libxtst6 \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator1 \
-    libnss3 \
     lsb-release \
-    xdg-utils \
     wget \
-    libgbm-dev
+    xdg-utils
 
 echo "✅ Dependencies installed!"
