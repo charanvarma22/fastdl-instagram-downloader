@@ -26,16 +26,18 @@ export async function resolveUrl(url, res) {
 // Universal Streamer using yt-dlp (Bypasses 403 Forbidden on CDN)
 const IG_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-function streamWithYtDlp(url, res, filename) {
+export function streamWithYtDlp(url, res, filename) {
+    // Force H.264 + AAC for maximum Windows compatibility
+    const formatStr = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best[ext=mp4]/best";
+
     const args = [
         "-o", "-",
-        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "-f", formatStr,
         "--user-agent", IG_USER_AGENT,
         "--referer", "https://www.instagram.com/",
         url
-    ]; // Output to stdout as MP4
+    ];
 
-    // Use cookies if available
     const cookiesPath = path.join(__dirname, "cookies.txt");
     if (fs.existsSync(cookiesPath)) {
         args.push("--cookies", cookiesPath);
@@ -43,34 +45,29 @@ function streamWithYtDlp(url, res, filename) {
         args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
     }
 
-    // Set Headers
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", filename.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
 
-    console.log(`📡 [yt-dlp] Starting direct stream for ${url}...`);
+    console.log(`📡 [yt-dlp] Starting forced MP4 stream for ${url}...`);
 
     const ytDlp = spawn("yt-dlp", args);
-
     ytDlp.stdout.pipe(res);
 
     ytDlp.stderr.on("data", (data) => {
-        console.error("Stream Stderr:", data.toString());
+        const msg = data.toString();
+        if (msg.includes("ERROR") || msg.includes("error")) {
+            console.error("yt-dlp Error:", msg);
+        }
     });
 
     ytDlp.on("close", (code) => {
         if (code !== 0) {
-            console.error(`Stream failed with code ${code}`);
-            // If headers sent, we can't send JSON error. Connection just closes.
-            if (!res.headersSent) {
-                res.status(500).json({ error: "Download stream failed" });
-            }
+            console.error(`yt-dlp failed with code ${code}`);
+            if (!res.headersSent) res.status(500).json({ error: "Download stream failed" });
         }
     });
 
-    // Handle client disconnect
-    res.on("close", () => {
-        ytDlp.kill();
-    });
+    res.on("close", () => ytDlp.kill());
 }
 
 async function handleStory(url, res) {
@@ -165,13 +162,10 @@ async function handlePost(url, res) {
 }
 
 
-async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
+export async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
     try {
         const ext = path.extname(filename).toLowerCase();
         const contentType = ext === '.mp4' ? 'video/mp4' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
-
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.setHeader("Content-Type", contentType);
 
         const response = await axios.get(cdnUrl, {
             responseType: "stream",
@@ -184,22 +178,25 @@ async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
             validateStatus: (status) => status === 200 // Force error for any non-200
         });
 
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", contentType);
         response.data.pipe(res);
     } catch (err) {
-        console.error(`🔴 Direct Stream Failed for ${filename}:`, err.message);
+        console.warn(`🔴 Direct Stream Failed (Blocked/403): ${err.message}`);
 
-        // Fail-Safe Fallback: If direct CDN link is blocked (403) or failed, use yt-dlp
         if (originalUrl) {
             console.log(`🔄 [FAIL-SAFE] Switching to yt-dlp for: ${originalUrl}`);
-            // Clear headers if they cause issues, though res.setHeader is fine to overwrite
             return streamWithYtDlp(originalUrl, res, filename);
         }
 
         if (!res.headersSent) {
-            res.status(500).json({ error: "Failed to download media." });
+            res.status(500).json({ error: "Media download failed. Link might be expired or blocked." });
         }
     }
 }
+
+// Unified export for server.js to use for shared fail-safe logic
+export const streamMedia = streamDirect;
 
 function extractShortcode(url) {
     const m = url.match(/\/(reel|p|tv)\/([^/?]+)/);
