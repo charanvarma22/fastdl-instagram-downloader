@@ -40,7 +40,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
             }
         }
 
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
         // Wait a bit for potential JS execution
         await new Promise(r => setTimeout(r, 2000));
@@ -144,6 +144,14 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
         });
 
         if (!data.image_versions2.candidates.length && !data.video_versions.length && !data.carousel_media.length) {
+            const content = await page.content();
+            if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
+                throw new Error("LOGIN_REQUIRED");
+            }
+            // Save debug screenshot
+            const screenPath = path.join(__dirname, 'debug_last_fail.png');
+            await page.screenshot({ path: screenPath });
+            console.log(`[Puppeteer] Failed to find media. Screenshot saved to ${screenPath}`);
             throw new Error("MEDIA_NOT_FOUND");
         }
 
