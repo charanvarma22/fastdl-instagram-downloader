@@ -35,6 +35,7 @@ async function runDebug() {
         } catch (pErr) {
             console.log("❌ FAILED (Puppeteer)");
             console.log("   - Error:", pErr.message);
+            console.log("   - CHECK: backend/debug_last_fail.html and .png for exact view.");
         }
     }
 
