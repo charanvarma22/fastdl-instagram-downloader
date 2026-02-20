@@ -1,5 +1,5 @@
 // ============================================
-// BLOG PUBLISHING API ENDPOINTS
+// BLOG PUBLISHING API ENDPOINTS (WordPress Compatible)
 // File: routes/blogApi.js
 // ============================================
 
@@ -50,14 +50,100 @@ const authenticateAPIKey = (req, res, next) => {
   next();
 };
 
-// Apply authentication to all routes
-// Apply authentication to administrative routes
+// Admin protection for sensitive routes
 const adminRoutes = ['/publish', '/sitemap/update', '/stats'];
 router.use((req, res, next) => {
   if (adminRoutes.some(path => req.path.startsWith(path))) {
     return authenticateAPIKey(req, res, next);
   }
   next();
+});
+
+// ============================================
+// ENDPOINT: Get All Published Blogs (WP Format)
+// GET /api/blog/posts
+// ============================================
+router.get('/posts', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    const [blogs] = await connection.query(`
+      SELECT 
+        blog_id as id, title, slug, excerpt, content, category, 
+        keyword, created_at as date, published_at, view_count
+      FROM blogs 
+      WHERE status = 'published' 
+      ORDER BY published_at DESC
+    `);
+
+    connection.release();
+
+    // Transform to WordPress REST API Format for Frontend Compatibility
+    const wpFormatBlogs = blogs.map(blog => ({
+      id: blog.id,
+      date: blog.date,
+      slug: blog.slug,
+      status: 'publish',
+      title: { rendered: blog.title },
+      content: { rendered: blog.content },
+      excerpt: { rendered: blog.excerpt || '' },
+      author: 1,
+      _embedded: {
+        'wp:featuredmedia': [{
+          source_url: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=800&q=80'
+        }],
+        'author': [{ name: 'Admin' }]
+      }
+    }));
+
+    res.status(200).json(wpFormatBlogs);
+  } catch (error) {
+    console.error('Fetch blogs error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch blog posts' });
+  }
+});
+
+// ============================================
+// ENDPOINT: Get Single Blog (WP Format)
+// GET /api/blog/post/:slug
+// ============================================
+router.get('/post/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const connection = await pool.getConnection();
+
+    const [blogs] = await connection.query(
+      'SELECT * FROM blogs WHERE slug = ? AND status = "published"',
+      [slug]
+    );
+
+    if (blogs.length === 0) {
+      connection.release();
+      return res.status(404).json({ success: false, error: 'Blog not found' });
+    }
+
+    const blog = blogs[0];
+
+    // Update view count
+    await connection.query(
+      'UPDATE blogs SET view_count = view_count + 1 WHERE blog_id = ?',
+      [blog.blog_id]
+    );
+
+    connection.release();
+
+    // Map to WP Format
+    res.status(200).json({
+      id: blog.blog_id,
+      date: blog.created_at,
+      slug: blog.slug,
+      title: { rendered: blog.title },
+      content: { rendered: blog.content },
+      excerpt: { rendered: blog.excerpt || '' }
+    });
+  } catch (error) {
+    console.error('Fetch single blog error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch blog post' });
+  }
 });
 
 // ============================================
@@ -81,272 +167,67 @@ router.post('/publish', async (req, res) => {
       status = 'published'
     } = req.body;
 
-    // Validation
     if (!title || !slug || !content) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: title, slug, content'
-      });
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
 
-    // Check if slug already exists
-    const [existing] = await connection.query(
-      'SELECT blog_id FROM blogs WHERE slug = ?',
-      [slug]
-    );
-
+    const [existing] = await connection.query('SELECT blog_id FROM blogs WHERE slug = ?', [slug]);
     if (existing.length > 0) {
-      return res.status(409).json({
-        success: false,
-        error: 'Blog with this slug already exists'
-      });
+      return res.status(409).json({ success: false, error: 'Slug exists' });
     }
 
-    // Convert markdown to HTML and sanitize
     const htmlContent = DOMPurify.sanitize(marked.parse(content));
-
-    // Start transaction
     await connection.beginTransaction();
 
-    // Insert blog post
     const [result] = await connection.query(
       `INSERT INTO blogs (
         title, slug, content, html_content, excerpt, 
         meta_title, meta_description, keyword, category, 
         author_id, status, view_count, created_at, updated_at, published_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW(), NOW())`,
-      [
-        title,
-        slug,
-        content,
-        htmlContent,
-        excerpt,
-        meta_title || title,
-        meta_description || excerpt,
-        keyword,
-        category,
-        author_id,
-        status
-      ]
+      [title, slug, content, htmlContent, excerpt, meta_title || title, meta_description || excerpt, keyword, category, author_id, status]
     );
 
-    const blogId = result.insertId;
-
-    // Commit transaction
     await connection.commit();
-
-    res.status(201).json({
-      success: true,
-      message: 'Blog published successfully',
-      data: {
-        blog_id: blogId,
-        slug: slug,
-        url: `/blog/${slug}`
-      }
-    });
-
+    res.status(201).json({ success: true, data: { blog_id: result.insertId, slug } });
   } catch (error) {
     await connection.rollback();
-    console.error('Blog publish error:', error);
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to publish blog',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    res.status(500).json({ success: false, error: error.message });
   } finally {
     connection.release();
   }
 });
 
 // ============================================
-// ENDPOINT: Update Sitemap
-// GET /api/sitemap/update
+// ENDPOINTS Mirroring (Sitemap, Stats, Health)
 // ============================================
 router.get('/sitemap/update', async (req, res) => {
   try {
     const connection = await pool.getConnection();
-
-    // Fetch all published blogs
-    const [blogs] = await connection.query(
-      `SELECT slug, updated_at, created_at 
-       FROM blogs 
-       WHERE status = 'published' 
-       ORDER BY created_at DESC`
-    );
-
+    const [blogs] = await connection.query("SELECT slug, updated_at, created_at FROM blogs WHERE status = 'published'");
     connection.release();
-
-    // Generate sitemap XML
-    const sitemap = generateSitemapXML(blogs);
-
-    // Write sitemap to public directory
-    const sitemapPath = path.join(__dirname, '../public/sitemap.xml');
-    await fs.writeFile(sitemapPath, sitemap, 'utf8');
-
-    // Ping Google Search Console (optional)
-    await pingSearchEngines();
-
-    res.status(200).json({
-      success: true,
-      message: 'Sitemap updated successfully',
-      blogs_count: blogs.length,
-      sitemap_url: '/sitemap.xml'
-    });
-
-  } catch (error) {
-    console.error('Sitemap update error:', error);
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update sitemap',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${blogs.map(b => `<url><loc>${process.env.SITE_URL}/blog/${b.slug}</loc></url>`).join('')}</urlset>`;
+    await fs.writeFile(path.join(__dirname, '../public/sitemap.xml'), sitemap);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ============================================
-// HELPER: Generate Sitemap XML
-// ============================================
-function generateSitemapXML(blogs) {
-  const baseUrl = process.env.SITE_URL || 'https://instaminsta.com';
-
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-
-  // Homepage
-  xml += '  <url>\n';
-  xml += `    <loc>${baseUrl}/</loc>\n`;
-  xml += '    <changefreq>daily</changefreq>\n';
-  xml += '    <priority>1.0</priority>\n';
-  xml += '  </url>\n';
-
-  // Blog listing page
-  xml += '  <url>\n';
-  xml += `    <loc>${baseUrl}/blog</loc>\n`;
-  xml += '    <changefreq>daily</changefreq>\n';
-  xml += '    <priority>0.9</priority>\n';
-  xml += '  </url>\n';
-
-  // Individual blog posts
-  blogs.forEach(blog => {
-    const lastmod = (blog.updated_at || blog.created_at).toISOString().split('T')[0];
-
-    xml += '  <url>\n';
-    xml += `    <loc>${baseUrl}/blog/${blog.slug}</loc>\n`;
-    xml += `    <lastmod>${lastmod}</lastmod>\n`;
-    xml += '    <changefreq>weekly</changefreq>\n';
-    xml += '    <priority>0.8</priority>\n';
-    xml += '  </url>\n';
-  });
-
-  xml += '</urlset>';
-
-  return xml;
-}
-
-// ============================================
-// HELPER: Ping Search Engines
-// ============================================
-async function pingSearchEngines() {
-  const sitemapUrl = encodeURIComponent(`${process.env.SITE_URL}/sitemap.xml`);
-
-  const pingUrls = [
-    `https://www.google.com/ping?sitemap=${sitemapUrl}`,
-    `https://www.bing.com/ping?sitemap=${sitemapUrl}`
-  ];
-
-  for (const url of pingUrls) {
-    try {
-      await fetch(url);
-    } catch (error) {
-      console.error(`Failed to ping: ${url}`, error.message);
-    }
-  }
-}
-
-// ============================================
-// ENDPOINT: Get Blog Statistics
-// GET /api/blog/stats
-// ============================================
 router.get('/stats', async (req, res) => {
   try {
     const connection = await pool.getConnection();
-
-    const [stats] = await connection.query(`
-      SELECT 
-        COUNT(*) as total_blogs,
-        SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) as today_count,
-        SUM(CASE WHEN DATE(created_at) >= CURDATE() - INTERVAL 7 DAY THEN 1 ELSE 0 END) as week_count,
-        SUM(view_count) as total_views,
-        AVG(view_count) as avg_views_per_blog
-      FROM blogs 
-      WHERE status = 'published'
-    `);
-
+    const [stats] = await connection.query("SELECT COUNT(*) as total_blogs, SUM(view_count) as total_views FROM blogs WHERE status = 'published'");
     connection.release();
-
-    res.status(200).json({
-      success: true,
-      data: stats[0]
-    });
-
-  } catch (error) {
-    console.error('Stats fetch error:', error);
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch statistics'
-    });
-  }
+    res.json({ success: true, data: stats[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ============================================
-// ENDPOINT: Health Check
-// GET /api/blog/health
-// ============================================
 router.get('/health', async (req, res) => {
   try {
     const connection = await pool.getConnection();
     await connection.ping();
     connection.release();
-
-    res.status(200).json({
-      success: true,
-      status: 'healthy',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(503).json({
-      success: false,
-      status: 'unhealthy',
-      error: error.message
-    });
-  }
+    res.json({ status: 'healthy' });
+  } catch (e) { res.status(503).json({ status: 'unhealthy', error: e.message }); }
 });
 
 module.exports = router;
-
-// ============================================
-// USAGE IN MAIN APP (app.js or server.js)
-// ============================================
-/*
-const express = require('express');
-const blogApiRoutes = require('./routes/blogApi');
-
-const app = express();
-
-// Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Mount blog API routes
-app.use('/api/blog', blogApiRoutes);
-app.use('/api/sitemap', blogApiRoutes);
-
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-*/
