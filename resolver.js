@@ -24,8 +24,10 @@ export async function resolveUrl(url, res) {
 }
 
 // Universal Streamer using yt-dlp (Bypasses 403 Forbidden on CDN)
+const IG_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 function streamWithYtDlp(url, res, filename) {
-    const args = ["-o", "-", url]; // Output to stdout
+    const args = ["-o", "-", "--user-agent", IG_USER_AGENT, "--referer", "https://www.instagram.com/", url]; // Output to stdout
 
     // Use cookies if available
     const cookiesPath = path.join(__dirname, "cookies.txt");
@@ -140,7 +142,15 @@ async function streamDirect(url, res, filename) {
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
         // We can set Content-Type if we knew it, but axios stream is fine
 
-        const response = await axios.get(url, { responseType: "stream" });
+        const response = await axios.get(url, {
+            responseType: "stream",
+            headers: {
+                "User-Agent": IG_USER_AGENT,
+                "Referer": "https://www.instagram.com/",
+                "Accept": "*/*"
+            },
+            timeout: 30000
+        });
         response.data.pipe(res);
     } catch (err) {
         console.error("Direct Stream Failed:", err.message);

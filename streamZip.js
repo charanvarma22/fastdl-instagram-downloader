@@ -21,8 +21,16 @@ export async function streamZip(items, res) {
             ext = "jpg";
         } else continue;
 
-        const stream = await axios.get(url, { responseType: "stream" });
-        archive.append(stream.data, { name: `media_${i}.${ext}` });
+        const response = await axios.get(url, {
+            responseType: "stream",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.instagram.com/",
+                "Accept": "*/*"
+            },
+            timeout: 20000
+        });
+        archive.append(response.data, { name: `media_${i}.${ext}` });
         i++;
     }
 

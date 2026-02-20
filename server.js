@@ -168,7 +168,15 @@ app.post("/api/download", async (req, res) => {
 
           if (mediaUrl) {
             const { default: axios } = await import("axios");
-            const response = await axios.get(mediaUrl, { responseType: "stream" });
+            const response = await axios.get(mediaUrl, {
+              responseType: "stream",
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.instagram.com/",
+                "Accept": "*/*"
+              },
+              timeout: 30000
+            });
             res.setHeader("Content-Disposition", `attachment; filename=media_${itemIndex}.${item.video_versions?.[0] ? 'mp4' : 'jpg'}`);
             return response.data.pipe(res);
           }

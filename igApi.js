@@ -211,22 +211,40 @@ function transformRapidAPIResponse(data, shortcode) {
     if (carouselArr && carouselArr.length > 0) {
         result.carousel_media = carouselArr.map(c => {
             const node = c.node || c;
-            const img = node.image_versions2?.candidates?.[0]?.url || node.display_url;
-            const vid = node.video_versions?.[0]?.url || node.video_url;
+
+            // Pick best image
+            const candidates = node.image_versions2?.candidates || [];
+            const bestImg = candidates.length > 0
+                ? candidates.reduce((a, b) => (a.width > b.width ? a : b)).url
+                : node.display_url;
+
+            // Pick best video
+            const vids = node.video_versions || [];
+            const bestVid = vids.length > 0
+                ? vids.reduce((a, b) => (a.width > b.width ? a : b)).url
+                : node.video_url;
 
             return {
-                image_versions2: { candidates: [{ url: img }] },
-                video_versions: vid ? [{ url: vid }] : []
+                image_versions2: { candidates: [{ url: bestImg }] },
+                video_versions: bestVid ? [{ url: bestVid }] : []
             };
         });
     }
 
-    if (item.video_versions?.length > 0 || item.video_url) {
+    const vidCandidates = item.video_versions || [];
+    if (vidCandidates.length > 0 || item.video_url) {
         result.media_type = 2;
-        result.video_versions.push({ url: item.video_versions?.[0]?.url || item.video_url });
+        const bestVid = vidCandidates.length > 0
+            ? vidCandidates.reduce((a, b) => (a.width > b.width ? a : b)).url
+            : item.video_url;
+        result.video_versions.push({ url: bestVid });
     }
 
-    const bestImg = item.image_versions2?.candidates?.[0]?.url || item.display_url || item.thumbnail_url;
+    const imgCandidates = item.image_versions2?.candidates || [];
+    const bestImg = imgCandidates.length > 0
+        ? imgCandidates.reduce((a, b) => (a.width > b.width ? a : b)).url
+        : (item.display_url || item.thumbnail_url);
+
     if (bestImg) {
         result.image_versions2.candidates.push({ url: bestImg });
     }
