@@ -222,68 +222,76 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
         data.shortcode = data.shortcode || shortcode;
         return data;
 
-        async function attemptLogin(page, username, password) {
-            console.log(`[Puppeteer] Attempting login for ${username}...`);
-            try {
-                await page.goto("https://www.instagram.com/accounts/login/", { waitUntil: 'networkidle2' });
+    } catch (error) {
+        console.error("[Puppeteer] Error:", error.message);
+        throw error;
+    } finally {
+        if (browser) await browser.close();
+    }
+}
 
-                // Wait for login fields
-                await page.waitForSelector('input[name="username"]', { timeout: 10000 });
+async function attemptLogin(page, username, password) {
+    console.log(`[Puppeteer] Attempting login for ${username}...`);
+    try {
+        await page.goto("https://www.instagram.com/accounts/login/", { waitUntil: 'networkidle2' });
 
-                await page.type('input[name="username"]', username, { delay: 100 });
-                await page.type('input[name="password"]', password, { delay: 100 });
+        // Wait for login fields
+        await page.waitForSelector('input[name="username"]', { timeout: 10000 });
 
-                await Promise.all([
-                    page.click('button[type="submit"]'),
-                    page.waitForNavigation({ waitUntil: 'networkidle2' })
-                ]);
+        await page.type('input[name="username"]', username, { delay: 100 });
+        await page.type('input[name="password"]', password, { delay: 100 });
 
-                const content = await page.content();
-                if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
-                    throw new Error("Login failed - still on login page.");
-                }
+        await Promise.all([
+            page.click('button[type="submit"]'),
+            page.waitForNavigation({ waitUntil: 'networkidle2' })
+        ]);
 
-                console.log("[Puppeteer] Login successful. Saving fresh cookies...");
-                const cookies = await page.cookies();
-                saveCookiesAsNetscape(cookies);
-
-            } catch (err) {
-                console.error("[Puppeteer] Login attempt failed:", err.message);
-                throw err;
-            }
+        const content = await page.content();
+        if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram")) {
+            throw new Error("Login failed - still on login page.");
         }
 
-        function saveCookiesAsNetscape(cookies) {
-            const cookiesPath = path.join(__dirname, "cookies.txt");
-            let header = "# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file!  Do not edit.\n\n";
-            let content = cookies.map(c => {
-                const domain = c.domain;
-                const flag = domain.startsWith('.') ? "TRUE" : "FALSE";
-                const path = c.path;
-                const secure = c.secure ? "TRUE" : "FALSE";
-                const expiration = Math.floor(c.expires || (Date.now() / 1000 + 86400 * 30));
-                return `${domain}\t${flag}\t${path}\t${secure}\t${expiration}\t${c.name}\t${c.value}`;
-            }).join('\n');
+        console.log("[Puppeteer] Login successful. Saving fresh cookies...");
+        const cookies = await page.cookies();
+        saveCookiesAsNetscape(cookies);
 
-            fs.writeFileSync(cookiesPath, header + content);
-        }
+    } catch (err) {
+        console.error("[Puppeteer] Login attempt failed:", err.message);
+        throw err;
+    }
+}
 
-        function parseCookies(fileContent) {
-            const cookies = [];
-            const lines = fileContent.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('#') || !line.trim()) continue;
-                const parts = line.split('\t');
-                if (parts.length >= 7) {
-                    cookies.push({
-                        domain: parts[0],
-                        path: parts[2],
-                        secure: parts[3] === 'TRUE',
-                        expires: parseInt(parts[4]) || undefined,
-                        name: parts[5],
-                        value: parts[6].trim()
-                    });
-                }
-            }
-            return cookies;
+function saveCookiesAsNetscape(cookies) {
+    const cookiesPath = path.join(__dirname, "cookies.txt");
+    let header = "# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n# This is a generated file!  Do not edit.\n\n";
+    let content = cookies.map(c => {
+        const domain = c.domain;
+        const flag = domain.startsWith('.') ? "TRUE" : "FALSE";
+        const path = c.path;
+        const secure = c.secure ? "TRUE" : "FALSE";
+        const expiration = Math.floor(c.expires || (Date.now() / 1000 + 86400 * 30));
+        return `${domain}\t${flag}\t${path}\t${secure}\t${expiration}\t${c.name}\t${c.value}`;
+    }).join('\n');
+
+    fs.writeFileSync(cookiesPath, header + content);
+}
+
+function parseCookies(fileContent) {
+    const cookies = [];
+    const lines = fileContent.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('#') || !line.trim()) continue;
+        const parts = line.split('\t');
+        if (parts.length >= 7) {
+            cookies.push({
+                domain: parts[0],
+                path: parts[2],
+                secure: parts[3] === 'TRUE',
+                expires: parseInt(parts[4]) || undefined,
+                name: parts[5],
+                value: parts[6].trim()
+            });
         }
+    }
+    return cookies;
+}
