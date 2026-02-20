@@ -106,7 +106,7 @@ app.post("/api/preview", async (req, res) => {
     if (media.carousel_media?.length > 0) {
       const items = media.carousel_media.map((item, idx) => ({
         id: idx,
-        type: item.video_versions?.[0] ? "video" : "image",
+        type: item.type || (item.video_versions?.[0] ? "video" : "image"),
         thumbnail: item.image_versions2?.candidates?.[0]?.url,
         mediaUrl: item.video_versions?.[0]?.url || item.image_versions2?.candidates?.[0]?.url,
         shortcode
@@ -165,6 +165,7 @@ app.post("/api/download", async (req, res) => {
         if (media.carousel_media?.[itemIndex]) {
           const item = media.carousel_media[itemIndex];
           const mediaUrl = item.video_versions?.[0]?.url || item.image_versions2?.candidates?.[0]?.url;
+          const isVideo = item.type === "video" || item.video_versions?.[0];
 
           if (mediaUrl) {
             const { default: axios } = await import("axios");
@@ -177,7 +178,7 @@ app.post("/api/download", async (req, res) => {
               },
               timeout: 30000
             });
-            res.setHeader("Content-Disposition", `attachment; filename=media_${itemIndex}.${item.video_versions?.[0] ? 'mp4' : 'jpg'}`);
+            res.setHeader("Content-Disposition", `attachment; filename=media_${itemIndex}.${isVideo ? 'mp4' : 'jpg'}`);
             return response.data.pipe(res);
           }
         }

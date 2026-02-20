@@ -212,37 +212,59 @@ function transformRapidAPIResponse(data, shortcode) {
         result.carousel_media = carouselArr.map(c => {
             const node = c.node || c;
 
-            // Pick best image
-            const candidates = node.image_versions2?.candidates || [];
-            const bestImg = candidates.length > 0
-                ? candidates.reduce((a, b) => (a.width > b.width ? a : b)).url
+            // Collect all image versions
+            const imgCandidates = [
+                ...(node.image_versions2?.candidates || []),
+                ...(node.display_resources || []),
+                { url: node.display_url, width: node.dimensions?.width || 0 }
+            ].filter(r => r && r.url);
+
+            const bestImg = imgCandidates.length > 0
+                ? imgCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
                 : node.display_url;
 
-            // Pick best video
-            const vids = node.video_versions || [];
-            const bestVid = vids.length > 0
-                ? vids.reduce((a, b) => (a.width > b.width ? a : b)).url
+            // Collect all video versions
+            const vidCandidates = [
+                ...(node.video_versions || []),
+                { url: node.video_url, width: node.dimensions?.width || 0 }
+            ].filter(v => v && v.url);
+
+            const bestVid = vidCandidates.length > 0
+                ? vidCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
                 : node.video_url;
 
             return {
                 image_versions2: { candidates: [{ url: bestImg }] },
-                video_versions: bestVid ? [{ url: bestVid }] : []
+                video_versions: bestVid ? [{ url: bestVid }] : [],
+                type: (bestVid || node.is_video || node.media_type === 2) ? "video" : "image"
             };
         });
     }
 
-    const vidCandidates = item.video_versions || [];
-    if (vidCandidates.length > 0 || item.video_url) {
+    // Unified selection for single media
+    const vidCandidates = [
+        ...(item.video_versions || []),
+        { url: item.video_url, width: item.dimensions?.width || 0 }
+    ].filter(v => v && v.url);
+
+    const isVideo = vidCandidates.length > 0 || item.is_video || item.media_type === 2;
+
+    if (isVideo) {
         result.media_type = 2;
         const bestVid = vidCandidates.length > 0
-            ? vidCandidates.reduce((a, b) => (a.width > b.width ? a : b)).url
+            ? vidCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
             : item.video_url;
-        result.video_versions.push({ url: bestVid });
+        if (bestVid) result.video_versions.push({ url: bestVid });
     }
 
-    const imgCandidates = item.image_versions2?.candidates || [];
+    const imgCandidates = [
+        ...(item.image_versions2?.candidates || []),
+        ...(item.display_resources || []),
+        { url: item.display_url, width: item.dimensions?.width || 0 }
+    ].filter(r => r && r.url);
+
     const bestImg = imgCandidates.length > 0
-        ? imgCandidates.reduce((a, b) => (a.width > b.width ? a : b)).url
+        ? imgCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
         : (item.display_url || item.thumbnail_url);
 
     if (bestImg) {

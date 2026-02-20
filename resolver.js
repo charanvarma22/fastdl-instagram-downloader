@@ -12,9 +12,9 @@ const __dirname = path.dirname(__filename);
 
 export async function resolveUrl(url, res) {
     try {
-        if (url.includes("/reel/")) return await handleReel(url, res);
+        if (url.includes("/reel/")) return await handleSingleMedia(url, res, "reel.mp4");
         if (url.includes("/p/")) return await handlePost(url, res);
-        if (url.includes("/tv/")) return await handleIGTV(url, res);
+        if (url.includes("/tv/")) return await handleSingleMedia(url, res, "igtv.mp4");
         if (url.includes("/stories/")) return await handleStory(url, res);
 
         return res.status(400).json({ error: "Unsupported URL type" });
@@ -85,12 +85,29 @@ async function handleStory(url, res) {
     }
 }
 
-async function handleReel(url, res) {
-    streamWithYtDlp(url, res, "reel.mp4");
-}
+async function handleSingleMedia(url, res, defaultFilename = "media.mp4") {
+    try {
+        const shortcode = extractShortcode(url);
+        const media = await fetchMediaByShortcode(shortcode);
 
-async function handleIGTV(url, res) {
-    streamWithYtDlp(url, res, "igtv.mp4");
+        // Prefer Video
+        if (media.video_versions && media.video_versions.length > 0) {
+            const videoUrl = media.video_versions[0].url;
+            return streamDirect(videoUrl, res, defaultFilename);
+        }
+
+        // Fallback to Image
+        if (media.image_versions2 && media.image_versions2.candidates.length > 0) {
+            const imgUrl = media.image_versions2.candidates[0].url;
+            const ext = imgUrl.includes(".webp") ? "webp" : "jpg";
+            return streamDirect(imgUrl, res, defaultFilename.replace(".mp4", `.${ext}`));
+        }
+
+        // Absolute fallback to yt-dlp scraping
+        streamWithYtDlp(url, res, defaultFilename);
+    } catch (e) {
+        handleError(e, res);
+    }
 }
 
 /* ================= POSTS ================= */
@@ -109,8 +126,8 @@ async function handlePost(url, res) {
 
         // Single Media
         if (media.video_versions && media.video_versions.length > 0) {
-            // It's a video - assume yt-dlp works for videos
-            streamWithYtDlp(url, res, "post_video.mp4");
+            const videoUrl = media.video_versions[0].url;
+            return streamDirect(videoUrl, res, "post_video.mp4");
         } else {
             // It's an image
             // If it came from HTML fallback, we MUST use the direct URL
