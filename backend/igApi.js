@@ -10,11 +10,11 @@ export async function fetchMediaByShortcode(shortcode) {
         // Host: instagram-scraper-2022.p.rapidapi.com
         const options = {
             method: 'GET',
-            url: 'https://instagram-scraper-20221.p.rapidapi.com/ig/post_info/',
+            url: 'https://instagram-scraper-2022.p.rapidapi.com/ig/post_details/',
             params: { shortcode: shortcode },
             headers: {
                 'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-                'x-rapidapi-host': 'instagram-scraper-20221.p.rapidapi.com'
+                'x-rapidapi-host': process.env.RAPIDAPI_HOST || 'instagram-scraper-2022.p.rapidapi.com'
             }
         };
 
