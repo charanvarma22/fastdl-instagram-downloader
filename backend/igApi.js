@@ -4,6 +4,9 @@ import fs from "fs";
 import { fileURLToPath } from 'url';
 import axios from "axios";
 import { fetchMediaByShortcode as fetchViaPuppeteer } from "./igPuppeteer.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // Fix __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -53,18 +56,30 @@ export async function fetchMediaByShortcode(shortcode) {
                 // FALLBACK: If yt-dlp fails (No video formats or 403 or anything for posts), try Puppeteer
                 // Especially for "No video formats found" or general scraping failure on Posts
                 if (stderrData.includes("No video formats found") || stderrData.includes("Unable to download") || code !== 0) {
-                    console.log("⚠️ yt-dlp failed - switching to Puppeteer Fallback...");
+                    console.warn(`⚠️ yt-dlp failed (Code ${code}). Trying RapidAPI...`);
+
+                    // 2. TRY RAPIDAPI (Paid/Quota-based)
+                    if (process.env.RAPIDAPI_KEY) {
+                        try {
+                            const rapidData = await fetchViaRapidAPI(shortcode);
+                            console.log("✅ SUCCESS via RapidAPI!");
+                            return resolve(rapidData);
+                        } catch (rapidErr) {
+                            console.warn(`⚠️ RapidAPI failed: ${rapidErr.message}. Trying Puppeteer Fallback...`);
+                        }
+                    } else {
+                        console.log("No RAPIDAPI_KEY found. Skipping RapidAPI...");
+                    }
+
+                    console.log("⚠️ Switching to Puppeteer Fallback...");
                     try {
                         const puppeteerData = await fetchViaPuppeteer(shortcode);
                         return resolve(puppeteerData);
                     } catch (fallbackErr) {
                         console.error("Puppeteer Fallback failed:", fallbackErr.message);
-                        // Fall through to reject with original error if puppeteer also fails
-                        // Or return puppeteer error?
-                        // Let's return a clean error if both fail
                         return reject({
                             code: "DOWNLOAD_FAILED",
-                            message: "Failed to fetch media (both methods failed).",
+                            message: "Failed to fetch media (all methods failed).",
                             originalError: fallbackErr.message
                         });
                     }
@@ -163,4 +178,77 @@ export async function fetchIGTVByUrl(igtvUrl) {
     const shortcodeMatch = igtvUrl.match(/\/tv\/([^/?]+)/);
     if (!shortcodeMatch) throw new Error("INVALID_URL");
     return await fetchMediaByShortcode(shortcodeMatch[1]);
+}
+
+async function fetchViaRapidAPI(shortcode) {
+    const key = process.env.RAPIDAPI_KEY;
+    const host = process.env.RAPIDAPI_HOST || "instagram-scraper-2022.p.rapidapi.com";
+
+    console.log(`🌐 Fetching via RapidAPI (${host})...`);
+
+    const endpoints = [
+        { url: `https://${host}/ig/info_2/`, params: { shortcode } },
+        { url: `https://${host}/ig/post_info/`, params: { shortcode } },
+        { url: `https://${host}/post/info`, params: { shortcode } }
+    ];
+
+    for (const ep of endpoints) {
+        try {
+            const response = await axios.get(ep.url, {
+                params: ep.params,
+                headers: {
+                    'x-rapidapi-key': key,
+                    'x-rapidapi-host': host
+                },
+                timeout: 10000
+            });
+
+            if (response.data && (response.data.items || response.data.data)) {
+                return transformRapidAPIResponse(response.data, shortcode);
+            }
+        } catch (e) {
+            console.warn(`RapidAPI endpoint ${ep.url} failed: ${e.message}`);
+        }
+    }
+    throw new Error("RapidAPI failed to return data from all endpoints.");
+}
+
+function transformRapidAPIResponse(data, shortcode) {
+    const item = data.items?.[0] || data.data?.[0] || data.data || data;
+
+    if (!item) throw new Error("Could not parse RapidAPI response.");
+
+    const result = {
+        shortcode: shortcode,
+        media_type: item.media_type || 1,
+        image_versions2: { candidates: [] },
+        video_versions: [],
+        carousel_media: []
+    };
+
+    const carouselArr = item.carousel_media || item.edge_sidecar_to_children?.edges;
+    if (carouselArr && carouselArr.length > 0) {
+        result.carousel_media = carouselArr.map(c => {
+            const node = c.node || c;
+            const img = node.image_versions2?.candidates?.[0]?.url || node.display_url;
+            const vid = node.video_versions?.[0]?.url || node.video_url;
+
+            return {
+                image_versions2: { candidates: [{ url: img }] },
+                video_versions: vid ? [{ url: vid }] : []
+            };
+        });
+    }
+
+    if (item.video_versions?.length > 0 || item.video_url) {
+        result.media_type = 2;
+        result.video_versions.push({ url: item.video_versions?.[0]?.url || item.video_url });
+    }
+
+    const bestImg = item.image_versions2?.candidates?.[0]?.url || item.display_url || item.thumbnail_url;
+    if (bestImg) {
+        result.image_versions2.candidates.push({ url: bestImg });
+    }
+
+    return result;
 }
