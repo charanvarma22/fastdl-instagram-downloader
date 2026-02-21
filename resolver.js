@@ -4,6 +4,7 @@ import { streamZip } from "./streamZip.js";
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { fileURLToPath } from 'url';
 
 // Fix __dirname for ES modules
@@ -27,12 +28,18 @@ export async function resolveUrl(url, res) {
 const IG_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export function streamWithYtDlp(url, res, filename) {
-    // Robust format selection: Favor MP4 containers with H.264 for widest compatibility
+    const tempDir = os.tmpdir();
+    const tempFilename = `instadl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.mp4`;
+    const tempPath = path.join(tempDir, tempFilename);
+
+    console.log(`📡 [yt-dlp] Downloading to temp file: ${tempPath}`);
+
+    // Robust format selection: Favor MP4 containers with H.264
     const formatStr = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
 
     const args = [
         "--no-playlist",
-        "-o", "-",
+        "-o", tempPath, // Output to temp file instead of stdout
         "-f", formatStr,
         "--user-agent", IG_USER_AGENT,
         "--referer", "https://www.instagram.com/",
@@ -46,21 +53,14 @@ export function streamWithYtDlp(url, res, filename) {
         args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
     }
 
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Type", filename.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
-
-    console.log(`📡 [yt-dlp] Starting forced MP4 stream for ${url}...`);
-
     const ytDlp = spawn("yt-dlp", args);
 
     ytDlp.on("error", (err) => {
         console.error("❌ [yt-dlp] Spawn Error:", err.message);
         if (!res.headersSent) {
-            res.status(500).json({ error: "yt-dlp is not installed on the server. Please run: sudo apt install yt-dlp" });
+            res.status(500).json({ error: "Download engine failure. Check server logs." });
         }
     });
-
-    ytDlp.stdout.pipe(res);
 
     ytDlp.stderr.on("data", (data) => {
         const msg = data.toString();
@@ -72,14 +72,45 @@ export function streamWithYtDlp(url, res, filename) {
     ytDlp.on("close", (code) => {
         if (code !== 0) {
             console.error(`yt-dlp failed with exit code ${code}`);
-            if (!res.headersSent) res.status(500).json({ error: "yt-dlp failed to process this video." });
-        } else {
-            console.log("✅ [yt-dlp] Stream completed successfully.");
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+            if (!res.headersSent) res.status(500).json({ error: "Failed to process video. It might be private or deleted." });
+            return;
         }
+
+        console.log("✅ [yt-dlp] Download complete. Streaming to client...");
+
+        if (!fs.existsSync(tempPath)) {
+            if (!res.headersSent) res.status(500).json({ error: "Internal processing error." });
+            return;
+        }
+
+        const stats = fs.statSync(tempPath);
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Length", stats.size);
+
+        const readStream = fs.createReadStream(tempPath);
+        readStream.pipe(res);
+
+        readStream.on("end", () => {
+            console.log("🏁 [STREAM] Finished. Cleaning up...");
+            fs.unlink(tempPath, (err) => { if (err) console.error("Temp cleanup error:", err); });
+        });
+
+        readStream.on("error", (err) => {
+            console.error("Stream read error:", err);
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        });
     });
 
     res.on("close", () => {
-        if (ytDlp) ytDlp.kill();
+        if (ytDlp && !ytDlp.killed) ytDlp.kill();
+        // Delay cleanup slightly to allow OS to release file handles if still reading
+        setTimeout(() => {
+            if (fs.existsSync(tempPath)) {
+                fs.unlink(tempPath, () => { });
+            }
+        }, 30000);
     });
 }
 
