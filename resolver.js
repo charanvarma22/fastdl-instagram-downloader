@@ -110,10 +110,9 @@ async function handleSingleMedia(url, res, defaultFilename = "media.mp4") {
             if (!defaultFilename.endsWith(".mp4")) defaultFilename = "media.mp4";
         }
 
-        // Prefer Video
+        // Prefer Video -> Forced yt-dlp for codec consistency
         if (media.type === "video" || (media.video_versions && media.video_versions.length > 0)) {
-            const videoUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
-            return streamDirect(videoUrl, res, defaultFilename, url);
+            return streamWithYtDlp(url, res, defaultFilename);
         }
 
         // Fallback to Image
@@ -144,10 +143,9 @@ async function handlePost(url, res) {
             return streamZip(media.carousel_media, res);
         }
 
-        // Single Media
+        // Single Media -> Forced yt-dlp for videos
         if (media.type === "video" || (media.video_versions && media.video_versions.length > 0)) {
-            const videoUrl = media.video_versions?.[0]?.url || media.image_versions2?.candidates?.[0]?.url;
-            return streamDirect(videoUrl, res, "post_video.mp4", url);
+            return streamWithYtDlp(url, res, "post_video.mp4");
         } else {
             // It's an image
             // If it came from HTML fallback, we MUST use the direct URL
@@ -208,7 +206,19 @@ export async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
 }
 
 // Unified export for server.js to use for shared fail-safe logic
-export const streamMedia = streamDirect;
+export async function streamMedia(mediaUrl, res, filename, originalUrl) {
+    const isVideo = filename.toLowerCase().endsWith(".mp4");
+
+    // For videos, ALWAYS use yt-dlp for codec enforcement (H.264/AAC)
+    if (isVideo && originalUrl) {
+        console.log(`🎬 [ROUTER] Routing Video to yt-dlp: ${originalUrl}`);
+        return streamWithYtDlp(originalUrl, res, filename);
+    }
+
+    // For images, use direct CDN streaming
+    console.log(`🖼️ [ROUTER] Routing Image to Direct Stream: ${filename}`);
+    return streamDirect(mediaUrl, res, filename, originalUrl);
+}
 
 function extractShortcode(url) {
     const m = url.match(/\/(reel|p|tv)\/([^/?]+)/);
