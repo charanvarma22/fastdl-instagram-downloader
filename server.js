@@ -201,6 +201,22 @@ app.get("/robots.txt", (req, res) => {
 });
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
+// Diagnostic Debug Endpoint
+app.get("/api/debug", async (req, res) => {
+  const { execSync } = await import("child_process");
+  const report = {
+    time: new Date().toISOString(),
+    node: process.version,
+    deps: {}
+  };
+
+  try { report.deps.ytDlp = execSync("yt-dlp --version").toString().trim(); } catch (e) { report.deps.ytDlp = "MISSING"; }
+  try { report.deps.ffmpeg = execSync("ffmpeg -version").toString().split("\n")[0].trim(); } catch (e) { report.deps.ffmpeg = "MISSING"; }
+  try { report.deps.git = execSync("git rev-parse --short HEAD").toString().trim(); } catch (e) { report.deps.git = "ERR"; }
+
+  res.json(report);
+});
+
 // ============================================
 // GLOBAL ERROR HANDLER (Ensures JSON responses)
 // ============================================

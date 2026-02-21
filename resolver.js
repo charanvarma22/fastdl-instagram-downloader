@@ -27,10 +27,11 @@ export async function resolveUrl(url, res) {
 const IG_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export function streamWithYtDlp(url, res, filename) {
-    // Force H.264 + AAC for maximum Windows compatibility
-    const formatStr = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best[ext=mp4]/best";
+    // Robust format selection: Favor MP4 containers with H.264 for widest compatibility
+    const formatStr = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
 
     const args = [
+        "--no-playlist",
         "-o", "-",
         "-f", formatStr,
         "--user-agent", IG_USER_AGENT,
