@@ -122,9 +122,14 @@ function transformYtDlpResponse(data, shortcode) {
         // If it's an image, the main 'url' from yt-dlp is usually the best uncropped source
         if (!isActuallyVideo && item.url) return item.url;
 
-        // Fallback to highest resolution thumbnail if URL is missing or it's a video
+        // Fallback to highest AREA resolution (Width * Height)
+        // This ensures portrait (1080x1350) beats square (1080x1080)
         if (item.thumbnails && item.thumbnails.length > 0) {
-            return item.thumbnails.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url;
+            return item.thumbnails.reduce((a, b) => {
+                const areaA = (a.width || 0) * (a.height || 0);
+                const areaB = (b.width || 0) * (b.height || 0);
+                return areaA > areaB ? a : b;
+            }).url;
         }
         return item.url || item.thumbnail;
     };
@@ -238,22 +243,31 @@ function transformRapidAPIResponse(data, shortcode) {
             // Collect all image versions
             const imgCandidates = [
                 ...(node.image_versions2?.candidates || []),
-                ...(node.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width })),
-                { url: node.display_url, width: node.dimensions?.width || 1080 } // High default for source
+                ...(node.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width, height: r.config_height || r.height })),
+                { url: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
             ].filter(r => r && r.url);
 
+            // Area-based selection (Width * Height)
             const bestImg = imgCandidates.length > 0
-                ? imgCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
+                ? imgCandidates.reduce((a, b) => {
+                    const areaA = (a.width || 0) * (a.height || 0);
+                    const areaB = (b.width || 0) * (b.height || 0);
+                    return areaA > areaB ? a : b;
+                }).url
                 : node.display_url;
 
             // Collect all video versions
             const vidCandidates = [
                 ...(node.video_versions || []),
-                { url: node.video_url, width: node.dimensions?.width || 1080 }
+                { url: node.video_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
             ].filter(v => v && v.url);
 
             const bestVid = vidCandidates.length > 0
-                ? vidCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
+                ? vidCandidates.reduce((a, b) => {
+                    const resA = (a.width || 0) * (a.height || 0);
+                    const resB = (b.width || 0) * (b.height || 0);
+                    return resA > resB ? a : b;
+                }).url
                 : node.video_url;
 
             return {
@@ -267,7 +281,7 @@ function transformRapidAPIResponse(data, shortcode) {
     // Unified selection for single media
     const vidCandidates = [
         ...(item.video_versions || []),
-        { url: item.video_url, width: item.dimensions?.width || 0 }
+        { url: item.video_url, width: item.dimensions?.width || 0, height: item.dimensions?.height || 0 }
     ].filter(v => v && v.url);
 
     const isVideo = vidCandidates.length > 0 || item.is_video || item.media_type === 2;
@@ -275,19 +289,27 @@ function transformRapidAPIResponse(data, shortcode) {
     if (isVideo) {
         result.media_type = 2;
         const bestVid = vidCandidates.length > 0
-            ? vidCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
+            ? vidCandidates.reduce((a, b) => {
+                const resA = (a.width || 0) * (a.height || 0);
+                const resB = (b.width || 0) * (b.height || 0);
+                return resA > resB ? a : b;
+            }).url
             : item.video_url;
         if (bestVid) result.video_versions.push({ url: bestVid });
     }
 
     const imgCandidates = [
         ...(item.image_versions2?.candidates || []),
-        ...(item.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width })),
-        { url: item.display_url, width: item.dimensions?.width || 1080 }
+        ...(item.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width, height: r.config_height || r.height })),
+        { url: item.display_url, width: item.dimensions?.width || 0, height: item.dimensions?.height || 0 }
     ].filter(r => r && r.url);
 
     const bestImg = imgCandidates.length > 0
-        ? imgCandidates.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url
+        ? imgCandidates.reduce((a, b) => {
+            const areaA = (a.width || 0) * (a.height || 0);
+            const areaB = (b.width || 0) * (b.height || 0);
+            return areaA > areaB ? a : b;
+        }).url
         : (item.display_url || item.thumbnail_url);
 
     if (bestImg) {

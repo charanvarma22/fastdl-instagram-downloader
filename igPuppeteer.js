@@ -146,7 +146,11 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
             const getBestImage = (node) => {
                 if (node.display_resources && node.display_resources.length > 0) {
-                    return node.display_resources.reduce((prev, current) => (prev.config_width > current.config_width) ? prev : current).src;
+                    return node.display_resources.reduce((prev, current) => {
+                        const areaP = (prev.config_width || 0) * (prev.config_height || 0);
+                        const areaC = (current.config_width || 0) * (current.config_height || 0);
+                        return areaP > areaC ? prev : current;
+                    }).src;
                 }
                 return node.display_url || node.image_versions2?.candidates?.[0]?.url;
             };
