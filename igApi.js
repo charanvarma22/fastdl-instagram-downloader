@@ -116,13 +116,13 @@ export async function fetchMediaByShortcode(shortcode) {
 
 function transformYtDlpResponse(data, shortcode) {
     const getBestImg = (item) => {
-        // For Instagram, 'url' is usually the high-res original for images.
-        // 'thumbnails' often contains square crops for the feed.
-        const isVid = item.ext === 'mp4' || item.vcodec !== 'none' || item.vcodec !== undefined;
+        // Improved detection: Check if it's actually a video
+        const isActuallyVideo = item.vcodec && item.vcodec !== 'none';
 
-        // If it's an image, the main 'url' is the gold standard for resolution.
-        if (!isVid && item.url) return item.url;
+        // If it's an image, the main 'url' from yt-dlp is usually the best uncropped source
+        if (!isActuallyVideo && item.url) return item.url;
 
+        // Fallback to highest resolution thumbnail if URL is missing or it's a video
         if (item.thumbnails && item.thumbnails.length > 0) {
             return item.thumbnails.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url;
         }
@@ -133,11 +133,11 @@ function transformYtDlpResponse(data, shortcode) {
         return {
             shortcode: shortcode,
             carousel_media: data.entries.map(entry => {
-                const isEntryVideo = entry.ext === 'mp4' || entry.ext === 'webm' || entry.vcodec !== 'none';
+                const isEntryVid = entry.vcodec && entry.vcodec !== 'none';
                 return {
-                    video_versions: isEntryVideo ? [{ url: entry.url }] : [],
+                    video_versions: isEntryVid ? [{ url: entry.url }] : [],
                     image_versions2: { candidates: [{ url: getBestImg(entry) }] },
-                    type: isEntryVideo ? "video" : "image"
+                    type: isEntryVid ? "video" : "image"
                 };
             }),
             video_versions: [],
@@ -145,7 +145,7 @@ function transformYtDlpResponse(data, shortcode) {
         };
     }
 
-    const isVideo = ['mp4', 'webm', 'mkv', 'mov'].includes(data.ext) || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
+    const isVideo = data.vcodec && data.vcodec !== 'none';
 
     return {
         shortcode: shortcode,
