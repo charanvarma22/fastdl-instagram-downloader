@@ -116,21 +116,32 @@ export async function fetchMediaByShortcode(shortcode) {
 
 function transformYtDlpResponse(data, shortcode) {
     const getBestImg = (item) => {
-        // Improved detection: Check if it's actually a video
+        // Collect all potential image sources
+        const candidates = [];
+
+        // Add main URL as a candidate if it's not a video
         const isActuallyVideo = item.vcodec && item.vcodec !== 'none';
+        if (!isActuallyVideo && item.url) {
+            candidates.push({ url: item.url, width: item.width || 0, height: item.height || 0 });
+        }
 
-        // If it's an image, the main 'url' from yt-dlp is usually the best uncropped source
-        if (!isActuallyVideo && item.url) return item.url;
-
-        // Fallback to highest AREA resolution (Width * Height)
-        // This ensures portrait (1080x1350) beats square (1080x1080)
+        // Add all thumbnails
         if (item.thumbnails && item.thumbnails.length > 0) {
-            return item.thumbnails.reduce((a, b) => {
+            item.thumbnails.forEach(t => {
+                candidates.push({ url: t.url, width: t.width || 0, height: t.height || 0 });
+            });
+        }
+
+        if (candidates.length > 0) {
+            // Pick based on largest Area (Width * Height)
+            // This mathematically guarantees Original Portrait/Landscape beats Square crops
+            return candidates.reduce((a, b) => {
                 const areaA = (a.width || 0) * (a.height || 0);
                 const areaB = (b.width || 0) * (b.height || 0);
-                return areaA > areaB ? a : b;
+                return areaA >= areaB ? a : b;
             }).url;
         }
+
         return item.url || item.thumbnail;
     };
 
