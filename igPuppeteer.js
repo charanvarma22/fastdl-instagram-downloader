@@ -159,9 +159,11 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 if (children && children.length > 0) {
                     result.carousel_media = children.map(edge => {
                         const node = edge.node || edge;
+                        const isNodeVideo = (node.is_video || node.video_versions?.length > 0);
                         return {
-                            video_versions: (node.is_video || node.video_versions?.length > 0) ? [{ url: node.video_url || node.video_versions?.[0]?.url }] : [],
-                            image_versions2: { candidates: [{ url: getBestImage(node) }] }
+                            video_versions: isNodeVideo ? [{ url: node.video_url || node.video_versions?.[0]?.url }] : [],
+                            image_versions2: { candidates: [{ url: getBestImage(node) }] },
+                            type: isNodeVideo ? "video" : "image"
                         };
                     });
                 }

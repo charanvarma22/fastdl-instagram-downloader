@@ -120,9 +120,11 @@ function transformYtDlpResponse(data, shortcode) {
             shortcode: shortcode,
             carousel_media: data.entries.map(entry => {
                 const isEntryVideo = entry.ext === 'mp4' || entry.ext === 'webm' || entry.vcodec !== 'none';
+                // For images, prioritize the direct URL (which is usually the full HD source) over the thumbnail (which is often square)
+                const bestUrl = isEntryVideo ? (entry.url) : (entry.url || entry.thumbnail);
                 return {
                     video_versions: isEntryVideo ? [{ url: entry.url }] : [],
-                    image_versions2: { candidates: [{ url: entry.thumbnail || entry.url }] },
+                    image_versions2: { candidates: [{ url: bestUrl }] },
                     type: isEntryVideo ? "video" : "image"
                 };
             }),
@@ -132,12 +134,14 @@ function transformYtDlpResponse(data, shortcode) {
     }
 
     const isVideo = ['mp4', 'webm', 'mkv', 'mov'].includes(data.ext) || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
+    // For single images, prioritize the main data.url which is the high-res original
+    const bestImgUrl = isVideo ? (data.thumbnail || data.url) : (data.url || data.thumbnail);
 
     return {
         shortcode: shortcode,
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
-            candidates: data.thumbnail ? [{ url: data.thumbnail }] : []
+            candidates: bestImgUrl ? [{ url: bestImgUrl }] : []
         },
         type: isVideo ? "video" : "image",
         carousel_media: []
