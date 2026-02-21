@@ -27,19 +27,15 @@ export async function resolveUrl(url, res) {
 // Universal Streamer using yt-dlp (Bypasses 403 Forbidden on CDN)
 const IG_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-export function streamWithYtDlp(url, res, filename) {
-    const tempDir = os.tmpdir();
-    const tempFilename = `instadl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.mp4`;
-    const tempPath = path.join(tempDir, tempFilename);
+export async function streamWithYtDlp(url, res, filename) {
+    console.log(`📡 [yt-dlp] Resolving compatible stream for: ${url}`);
 
-    console.log(`📡 [yt-dlp] Downloading to temp file: ${tempPath}`);
-
-    // Robust format selection: Favor MP4 containers with H.264
+    // Favors MP4 containers with H.264 for widest compatibility
     const formatStr = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
 
     const args = [
         "--no-playlist",
-        "-o", tempPath, // Output to temp file instead of stdout
+        "--get-url", // Get the direct URL instead of downloading
         "-f", formatStr,
         "--user-agent", IG_USER_AGENT,
         "--referer", "https://www.instagram.com/",
@@ -53,64 +49,42 @@ export function streamWithYtDlp(url, res, filename) {
         args.push("-u", process.env.IG_USERNAME, "-p", process.env.IG_PASSWORD);
     }
 
+    const { exec } = await import("child_process");
+    const cmd = `yt-dlp ${args.map(a => `"${a}"`).join(" ")}`;
+
+    exec(cmd, async (error, stdout, stderr) => {
+        if (error || !stdout.trim()) {
+            console.warn(`⚠️ [yt-dlp] Quick resolution failed, falling back to direct pipe: ${stderr}`);
+            return streamDirectPipe(url, res, filename);
+        }
+
+        const resolvedUrls = stdout.trim().split("\n");
+        const finalUrl = resolvedUrls[0]; // Take primary stream
+
+        console.log(`🚀 [yt-dlp] Resolved direct link: ${finalUrl.substring(0, 50)}...`);
+
+        // Use streamDirect to handle headers and fail-over
+        return streamDirect(finalUrl, res, filename, url);
+    });
+}
+
+// Fallback: Direct pipe from yt-dlp (Standard)
+function streamDirectPipe(url, res, filename) {
+    const formatStr = "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
+    const args = ["-o", "-", "-f", formatStr, "--user-agent", IG_USER_AGENT, "--referer", "https://www.instagram.com/", url];
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "video/mp4");
+
     const ytDlp = spawn("yt-dlp", args);
-
-    ytDlp.on("error", (err) => {
-        console.error("❌ [yt-dlp] Spawn Error:", err.message);
-        if (!res.headersSent) {
-            res.status(500).json({ error: "Download engine failure. Check server logs." });
-        }
-    });
-
-    ytDlp.stderr.on("data", (data) => {
-        const msg = data.toString();
-        if (msg.includes("ERROR") || msg.includes("error")) {
-            console.error("yt-dlp Stderr Error:", msg);
-        }
-    });
+    ytDlp.stdout.pipe(res);
 
     ytDlp.on("close", (code) => {
-        if (code !== 0) {
-            console.error(`yt-dlp failed with exit code ${code}`);
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-            if (!res.headersSent) res.status(500).json({ error: "Failed to process video. It might be private or deleted." });
-            return;
-        }
-
-        console.log("✅ [yt-dlp] Download complete. Streaming to client...");
-
-        if (!fs.existsSync(tempPath)) {
-            if (!res.headersSent) res.status(500).json({ error: "Internal processing error." });
-            return;
-        }
-
-        const stats = fs.statSync(tempPath);
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Length", stats.size);
-
-        const readStream = fs.createReadStream(tempPath);
-        readStream.pipe(res);
-
-        readStream.on("end", () => {
-            console.log("🏁 [STREAM] Finished. Cleaning up...");
-            fs.unlink(tempPath, (err) => { if (err) console.error("Temp cleanup error:", err); });
-        });
-
-        readStream.on("error", (err) => {
-            console.error("Stream read error:", err);
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-        });
+        if (code === 0) console.log("✅ [yt-dlp] Pipe stream finished.");
     });
 
     res.on("close", () => {
         if (ytDlp && !ytDlp.killed) ytDlp.kill();
-        // Delay cleanup slightly to allow OS to release file handles if still reading
-        setTimeout(() => {
-            if (fs.existsSync(tempPath)) {
-                fs.unlink(tempPath, () => { });
-            }
-        }, 30000);
     });
 }
 
@@ -207,7 +181,8 @@ async function handlePost(url, res) {
 export async function streamDirect(cdnUrl, res, filename, originalUrl = null) {
     try {
         const ext = path.extname(filename).toLowerCase();
-        const contentType = ext === '.mp4' ? 'video/mp4' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
+        const isVideo = ext === '.mp4';
+        const contentType = isVideo ? 'video/mp4' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
 
         const response = await axios.get(cdnUrl, {
             responseType: "stream",
@@ -281,4 +256,3 @@ function handleError(err, res) {
         timestamp: new Date().toISOString()
     });
 }
-
