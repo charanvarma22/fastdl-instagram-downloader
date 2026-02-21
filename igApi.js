@@ -115,16 +115,22 @@ export async function fetchMediaByShortcode(shortcode) {
 }
 
 function transformYtDlpResponse(data, shortcode) {
+    const getBestImg = (item) => {
+        if (item.thumbnails && item.thumbnails.length > 0) {
+            // Find the widest thumbnail (highest resolution)
+            return item.thumbnails.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url;
+        }
+        return item.url || item.thumbnail;
+    };
+
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
             carousel_media: data.entries.map(entry => {
                 const isEntryVideo = entry.ext === 'mp4' || entry.ext === 'webm' || entry.vcodec !== 'none';
-                // For images, prioritize the direct URL (which is usually the full HD source) over the thumbnail (which is often square)
-                const bestUrl = isEntryVideo ? (entry.url) : (entry.url || entry.thumbnail);
                 return {
                     video_versions: isEntryVideo ? [{ url: entry.url }] : [],
-                    image_versions2: { candidates: [{ url: bestUrl }] },
+                    image_versions2: { candidates: [{ url: getBestImg(entry) }] },
                     type: isEntryVideo ? "video" : "image"
                 };
             }),
@@ -134,14 +140,12 @@ function transformYtDlpResponse(data, shortcode) {
     }
 
     const isVideo = ['mp4', 'webm', 'mkv', 'mov'].includes(data.ext) || (data.formats && data.formats.some(f => f.vcodec !== 'none' && f.vcodec !== undefined));
-    // For single images, prioritize the main data.url which is the high-res original
-    const bestImgUrl = isVideo ? (data.thumbnail || data.url) : (data.url || data.thumbnail);
 
     return {
         shortcode: shortcode,
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
-            candidates: bestImgUrl ? [{ url: bestImgUrl }] : []
+            candidates: [{ url: getBestImg(data) }]
         },
         type: isVideo ? "video" : "image",
         carousel_media: []

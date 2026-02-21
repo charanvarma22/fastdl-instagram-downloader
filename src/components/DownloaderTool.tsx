@@ -148,7 +148,7 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
             {(result as any).items?.map((item: any, idx: number) => (
               <div key={idx} className="bg-slate-900/60 rounded-[2.5rem] shadow-4xl overflow-hidden border border-slate-800 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
                 <div className="p-3">
-                  <img src={item.thumbnail} alt={`Preview ${idx + 1}`} className="w-full h-[300px] object-cover rounded-[2rem] shadow-xl" />
+                  <img src={item.thumbnail} alt={`Preview ${idx + 1}`} className="w-full h-auto max-h-[400px] object-contain rounded-[2rem] shadow-xl" />
                 </div>
                 <div className="p-8 pt-2">
                   <div className="flex items-center gap-2 mb-4">
