@@ -116,8 +116,14 @@ export async function fetchMediaByShortcode(shortcode) {
 
 function transformYtDlpResponse(data, shortcode) {
     const getBestImg = (item) => {
+        // For Instagram, 'url' is usually the high-res original for images.
+        // 'thumbnails' often contains square crops for the feed.
+        const isVid = item.ext === 'mp4' || item.vcodec !== 'none' || item.vcodec !== undefined;
+
+        // If it's an image, the main 'url' is the gold standard for resolution.
+        if (!isVid && item.url) return item.url;
+
         if (item.thumbnails && item.thumbnails.length > 0) {
-            // Find the widest thumbnail (highest resolution)
             return item.thumbnails.reduce((a, b) => ((a.width || 0) > (b.width || 0) ? a : b)).url;
         }
         return item.url || item.thumbnail;
