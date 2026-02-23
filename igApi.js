@@ -184,7 +184,7 @@ function transformYtDlpResponse(data, shortcode) {
 
     return {
         shortcode: shortcode,
-        version: "v2.5-ULTRA-HD",
+        version: "v2.5.2-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
             candidates: [{ url: imgInfo.url }]
@@ -219,15 +219,16 @@ async function fetchViaRapidAPI(shortcode) {
     console.log(`🌐 [RapidAPI] Connecting to ${host} for shortcode: ${shortcode}...`);
 
     const endpoints = [
-        { url: `https://${host}/v1/post_info`, params: { shortcode } },
-        { url: `https://${host}/post/info`, params: { shortcode } },
-        { url: `https://${host}/v1/info`, params: { shortcode } },
-        { url: `https://${host}/ig/info_2/`, params: { shortcode } }
+        { url: `https://${host}/getMediaByShortcode`, params: { shortcode } },
+        { url: `https://${host}/getMediaByShortcode`, params: { short_code: shortcode } },
+        { url: `https://${host}/media_info`, params: { shortcode } },
+        { url: `https://${host}/v1/media_info`, params: { shortcode } },
+        { url: `https://${host}/post/details`, params: { shortcode } }
     ];
 
     for (const ep of endpoints) {
         try {
-            console.log(`📡 [RapidAPI] Trying endpoint: ${ep.url}`);
+            console.log(`📡 [RapidAPI] Trying endpoint: ${ep.url} with params ${JSON.stringify(ep.params)}`);
             const response = await axios.get(ep.url, {
                 params: ep.params,
                 headers: {
@@ -237,7 +238,7 @@ async function fetchViaRapidAPI(shortcode) {
                 timeout: 15000
             });
 
-            if (response.data && (response.data.items || response.data.data || response.data.shortcode)) {
+            if (response.data && (response.data.item || response.data.items || response.data.data)) {
                 console.log(`✅ [RapidAPI] Data received from ${ep.url}`);
                 return transformRapidAPIResponse(response.data, shortcode);
             }
