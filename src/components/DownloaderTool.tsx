@@ -175,7 +175,14 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
           {/* Main ready state message for Single items (to keep original feel if only 1) */}
           {((result as any).items?.length === 1) && (
             <div className="bg-slate-700/20 py-6 px-8 rounded-3xl border border-dashed border-slate-700 text-slate-400 font-medium">
-              HD Quality fetched successfully. Your file is ready for download.
+              <div className="flex flex-col items-center gap-2">
+                {result.version?.includes("ULTRA-HD") && (
+                  <span className="bg-green-500/10 text-green-500 text-[10px] px-3 py-1 rounded-full border border-green-500/20 font-black uppercase tracking-tighter">
+                    Ultra HD Selection Active ({result.version})
+                  </span>
+                )}
+                <span>HD Quality fetched successfully. Your file is ready for download.</span>
+              </div>
             </div>
           )}
         </div>

@@ -116,16 +116,15 @@ export async function fetchMediaByShortcode(shortcode) {
 
 function transformYtDlpResponse(data, shortcode) {
     const getBestImg = (item) => {
-        // Collect all potential image sources
         const candidates = [];
 
-        // Add main URL as a candidate if it's not a video
-        const isActuallyVideo = item.vcodec && item.vcodec !== 'none';
+        // Add main URL if it's not a video
+        const isActuallyVideo = (item.vcodec && item.vcodec !== 'none') || (item.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(item.ext.toLowerCase()));
         if (!isActuallyVideo && item.url) {
             candidates.push({ url: item.url, width: item.width || 0, height: item.height || 0 });
         }
 
-        // Add all thumbnails
+        // Add thumbnails
         if (item.thumbnails && item.thumbnails.length > 0) {
             item.thumbnails.forEach(t => {
                 candidates.push({ url: t.url, width: t.width || 0, height: t.height || 0 });
@@ -133,11 +132,11 @@ function transformYtDlpResponse(data, shortcode) {
         }
 
         if (candidates.length > 0) {
-            // Pick based on largest Area (Width * Height)
-            // This mathematically guarantees Original Portrait/Landscape beats Square crops
+            // Sort by area (Width * Height)
+            // Portrait (1080x1350) = 1,458,000 > Square (1080x1080) = 1,166,400
             return candidates.reduce((a, b) => {
-                const areaA = (a.width || 0) * (a.height || 0);
-                const areaB = (b.width || 0) * (b.height || 0);
+                const areaA = (a.width || 1) * (a.height || 1);
+                const areaB = (b.width || 1) * (b.height || 1);
                 return areaA >= areaB ? a : b;
             }).url;
         }
@@ -148,8 +147,9 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
+            version: "v2.1-ULTRA-HD",
             carousel_media: data.entries.map(entry => {
-                const isEntryVid = entry.vcodec && entry.vcodec !== 'none';
+                const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 return {
                     video_versions: isEntryVid ? [{ url: entry.url }] : [],
                     image_versions2: { candidates: [{ url: getBestImg(entry) }] },
@@ -161,10 +161,11 @@ function transformYtDlpResponse(data, shortcode) {
         };
     }
 
-    const isVideo = data.vcodec && data.vcodec !== 'none';
+    const isVideo = (data.vcodec && data.vcodec !== 'none') || (data.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(data.ext.toLowerCase()));
 
     return {
         shortcode: shortcode,
+        version: "v2.1-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
             candidates: [{ url: getBestImg(data) }]
@@ -240,6 +241,7 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
+        version: "v2.1-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
