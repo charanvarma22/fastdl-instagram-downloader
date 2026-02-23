@@ -195,11 +195,19 @@ app.post("/api/download", async (req, res) => {
 // ============================================
 // STATIC ASSETS
 // ============================================
-app.get("/sitemap.xml", (req, res) => res.sendFile(path.join(__dirname, "public", "sitemap.xml")));
-app.get("/robots.txt", (req, res) => {
-  res.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${process.env.SITE_URL}/sitemap.xml`);
+// Health Check
+app.get("/health", (req, res) => res.json({ status: "ok", version: "v2.3-ULTRA-HD" }));
+
+// Frontend Catch-all (Serve index.html for any non-API routes)
+app.use(express.static(path.join(__dirname, "dist")));
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) return next();
+  res.sendFile(path.join(__dirname, "dist", "index.html"), (err) => {
+    if (err) {
+      res.status(500).send("Frontend build missing or inaccessible. Please run 'npm run build'.");
+    }
+  });
 });
-app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 // Diagnostic Debug Endpoint
 app.get("/api/debug", async (req, res) => {
