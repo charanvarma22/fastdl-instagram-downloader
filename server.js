@@ -196,15 +196,19 @@ app.post("/api/download", async (req, res) => {
 // STATIC ASSETS
 // ============================================
 // Health Check
-app.get("/health", (req, res) => res.json({ status: "ok", version: "v2.3-ULTRA-HD" }));
+app.get("/health", (req, res) => res.json({ status: "ok", version: "v2.3.1-ULTRA-HD" }));
 
 // Frontend Catch-all (Serve index.html for any non-API routes)
 app.use(express.static(path.join(__dirname, "dist")));
-app.get("*", (req, res) => {
+app.get("*", (req, res, next) => {
+  // If request contains /api/, it shouldn't be here, but let's be safe
   if (req.path.startsWith("/api/")) return next();
-  res.sendFile(path.join(__dirname, "dist", "index.html"), (err) => {
+
+  const indexPath = path.join(__dirname, "dist", "index.html");
+  res.sendFile(indexPath, (err) => {
     if (err) {
-      res.status(500).send("Frontend build missing or inaccessible. Please run 'npm run build'.");
+      logger.error(`Static fallback error for ${req.path}: ${err.message}`);
+      res.status(500).send("Frontend build missing or inaccessible. Please run 'npm run build' on the VPS.");
     }
   });
 });
