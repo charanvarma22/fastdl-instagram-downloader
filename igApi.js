@@ -115,30 +115,34 @@ export async function fetchMediaByShortcode(shortcode) {
 }
 
 function transformYtDlpResponse(data, shortcode) {
-    const getBestImg = (item) => {
+    const getBestImg = (item, type = "single") => {
         const candidates = [];
-
-        // Add main URL if it's not a video
         const isActuallyVideo = (item.vcodec && item.vcodec !== 'none') || (item.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(item.ext.toLowerCase()));
+
         if (!isActuallyVideo && item.url) {
-            candidates.push({ url: item.url, width: item.width || 0, height: item.height || 0 });
+            candidates.push({ url: item.url, width: item.width || 0, height: item.height || 0, source: 'main_url' });
         }
 
-        // Add thumbnails
         if (item.thumbnails && item.thumbnails.length > 0) {
             item.thumbnails.forEach(t => {
-                candidates.push({ url: t.url, width: t.width || 0, height: t.height || 0 });
+                candidates.push({ url: t.url, width: t.width || 0, height: t.height || 0, source: 'thumbnail' });
             });
         }
 
         if (candidates.length > 0) {
-            // Sort by area (Width * Height)
-            // Portrait (1080x1350) = 1,458,000 > Square (1080x1080) = 1,166,400
-            return candidates.reduce((a, b) => {
-                const areaA = (a.width || 1) * (a.height || 1);
-                const areaB = (b.width || 1) * (b.height || 1);
-                return areaA >= areaB ? a : b;
-            }).url;
+            // Square-Proof Scoring: Area - (Penalty if perfect square)
+            const scored = candidates.map(c => {
+                const area = (c.width || 1) * (c.height || 1);
+                const ratio = (c.width || 1) / (c.height || 1);
+                const isSquare = Math.abs(1 - ratio) < 0.05;
+                // Penalize squares by 50% if they compete with high-res originals
+                const score = isSquare ? (area * 0.5) : area;
+                return { ...c, score, isSquare, ratio };
+            });
+
+            const winner = scored.reduce((a, b) => (a.score >= b.score ? a : b));
+            console.log(`📸 [HD_DEBUG] ${type} | Final Selection: ${winner.width}x${winner.height} (Ratio: ${winner.ratio.toFixed(2)}) | Score: ${winner.score} | Source: ${winner.source}`);
+            return winner.url;
         }
 
         return item.url || item.thumbnail;
@@ -147,12 +151,12 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.1-ULTRA-HD",
-            carousel_media: data.entries.map(entry => {
+            version: "v2.2-ULTRA-HD",
+            carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 return {
                     video_versions: isEntryVid ? [{ url: entry.url }] : [],
-                    image_versions2: { candidates: [{ url: getBestImg(entry) }] },
+                    image_versions2: { candidates: [{ url: getBestImg(entry, `carousel_${idx}`) }] },
                     type: isEntryVid ? "video" : "image"
                 };
             }),
@@ -165,10 +169,10 @@ function transformYtDlpResponse(data, shortcode) {
 
     return {
         shortcode: shortcode,
-        version: "v2.1-ULTRA-HD",
+        version: "v2.2-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
-            candidates: [{ url: getBestImg(data) }]
+            candidates: [{ url: getBestImg(data, "single") }]
         },
         type: isVideo ? "video" : "image",
         carousel_media: []
@@ -241,7 +245,7 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
-        version: "v2.1-ULTRA-HD",
+        version: "v2.2-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
@@ -260,14 +264,21 @@ function transformRapidAPIResponse(data, shortcode) {
                 { url: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
             ].filter(r => r && r.url);
 
-            // Area-based selection (Width * Height)
-            const bestImg = imgCandidates.length > 0
-                ? imgCandidates.reduce((a, b) => {
-                    const areaA = (a.width || 0) * (a.height || 0);
-                    const areaB = (b.width || 0) * (b.height || 0);
-                    return areaA > areaB ? a : b;
-                }).url
-                : node.display_url;
+            // Area + Square-Proof selection
+            const scored = imgCandidates.map(c => {
+                const area = (c.width || 1) * (c.height || 1);
+                const ratio = (c.width || 1) / (c.height || 1);
+                const isSquare = Math.abs(1 - ratio) < 0.05;
+                const score = isSquare ? (area * 0.5) : area;
+                return { ...c, score, isSquare, ratio };
+            });
+
+            const winner = scored.length > 0
+                ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
+                : { url: node.display_url, width: 0, height: 0, ratio: 1 };
+
+            console.log(`📸 [RapidAPI] Carousel Item | Selection: ${winner.width}x${winner.height} (Ratio: ${winner.ratio.toFixed(2)}) | Score: ${winner.score}`);
+            const bestImg = winner.url;
 
             // Collect all video versions
             const vidCandidates = [
@@ -317,13 +328,20 @@ function transformRapidAPIResponse(data, shortcode) {
         { url: item.display_url, width: item.dimensions?.width || 0, height: item.dimensions?.height || 0 }
     ].filter(r => r && r.url);
 
-    const bestImg = imgCandidates.length > 0
-        ? imgCandidates.reduce((a, b) => {
-            const areaA = (a.width || 0) * (a.height || 0);
-            const areaB = (b.width || 0) * (b.height || 0);
-            return areaA > areaB ? a : b;
-        }).url
-        : (item.display_url || item.thumbnail_url);
+    const scored = imgCandidates.map(c => {
+        const area = (c.width || 1) * (c.height || 1);
+        const ratio = (c.width || 1) / (c.height || 1);
+        const isSquare = Math.abs(1 - ratio) < 0.05;
+        const score = isSquare ? (area * 0.5) : area;
+        return { ...c, score, isSquare, ratio };
+    });
+
+    const winner = scored.length > 0
+        ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
+        : { url: (item.display_url || item.thumbnail_url), width: 0, height: 0, ratio: 1 };
+
+    console.log(`📸 [RapidAPI] Single Item | Selection: ${winner.width}x${winner.height} (Ratio: ${winner.ratio.toFixed(2)}) | Score: ${winner.score}`);
+    const bestImg = winner.url;
 
     if (bestImg) {
         result.image_versions2.candidates.push({ url: bestImg });

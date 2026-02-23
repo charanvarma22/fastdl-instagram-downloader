@@ -178,7 +178,7 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
               <div className="flex flex-col items-center gap-2">
                 {result.version?.includes("ULTRA-HD") && (
                   <span className="bg-green-500/10 text-green-500 text-[10px] px-3 py-1 rounded-full border border-green-500/20 font-black uppercase tracking-tighter">
-                    Ultra HD Selection Active ({result.version})
+                    Ultra HD Selection (Square-Proof) Active ({result.version})
                   </span>
                 )}
                 <span>HD Quality fetched successfully. Your file is ready for download.</span>

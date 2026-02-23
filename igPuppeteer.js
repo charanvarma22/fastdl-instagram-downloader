@@ -146,11 +146,18 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
             const getBestImage = (node) => {
                 if (node.display_resources && node.display_resources.length > 0) {
-                    return node.display_resources.reduce((prev, current) => {
-                        const areaP = (prev.config_width || 0) * (prev.config_height || 0);
-                        const areaC = (current.config_width || 0) * (current.config_height || 0);
-                        return areaP > areaC ? prev : current;
-                    }).src;
+                    const scored = node.display_resources.map(r => {
+                        const width = r.config_width || 0;
+                        const height = r.config_height || 0;
+                        const area = width * height;
+                        const ratio = width / (height || 1);
+                        const isSquare = Math.abs(1 - ratio) < 0.05;
+                        const score = isSquare ? (area * 0.5) : area;
+                        return { src: r.src, score, width, height, isSquare };
+                    });
+                    const winner = scored.reduce((prev, current) => (prev.score > current.score) ? prev : current);
+                    console.log(`[Puppeteer_DEBUG] Winner: ${winner.width}x${winner.height} (Score: ${winner.score}, Square: ${winner.isSquare})`);
+                    return winner.src;
                 }
                 return node.display_url || node.image_versions2?.candidates?.[0]?.url;
             };
