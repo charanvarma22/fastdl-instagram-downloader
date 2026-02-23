@@ -137,8 +137,8 @@ function transformYtDlpResponse(data, shortcode) {
             const targetRatio = topW / (topH || 1);
             const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
-            // v2.6.9 Ratio X-Force (Definitive Anti-Crop)
-            const scoredItems = candidates.map(c => {
+            // v2.6.10 Non-Square Dominance (Final Anti-Crop)
+            const scoredItems = candidates.map((c, idx) => {
                 const hasMeta = !!(c.width && c.height);
                 const w = c.width || (targetIsSquare ? 1080 : topW) || 1080;
                 const h = c.height || (targetIsSquare ? 1350 : topH) || 1350;
@@ -153,14 +153,15 @@ function transformYtDlpResponse(data, shortcode) {
                 } else {
                     score *= 10.0; // 10x bonus for ANY non-square (Portrait or Landscape)
                 }
-                if (hasMeta) score *= 1.5; // Prefer real data
+                if (hasMeta) score *= 1.5; // Trust data over guesses
 
+                console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)} | Source: ${c.source || 'uk'}`);
                 return { ...c, score, isSquare, ratio, w, h };
             });
 
             const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
-            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.9`;
-            console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)}) | Ratio: ${winner.ratio.toFixed(2)}`);
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.10`;
+            console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)})`);
             return { url: winner.url, diagnostics: diag };
         }
 
@@ -170,7 +171,7 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.6.9-ULTRA-HD",
+            version: "v2.6.10-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 const imgInfo = getBestImg(entry, `carousel_${idx}`);
@@ -191,7 +192,7 @@ function transformYtDlpResponse(data, shortcode) {
 
     return {
         shortcode: shortcode,
-        version: "v2.6.6-ULTRA-HD",
+        version: "v2.6.10-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
             candidates: [{ url: imgInfo.url }]
@@ -268,7 +269,7 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
-        version: "v2.6.6-ULTRA-HD",
+        version: "v2.6.10-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
@@ -302,7 +303,7 @@ function transformRapidAPIResponse(data, shortcode) {
             if (isSquare) {
                 score *= 0.1;
             } else {
-                score *= 10.0; // v2.6.9 Ratio X-Force
+                score *= 10.0; // v2.6.10 Non-Square Dominance
             }
             if (hasMeta) score *= 1.5;
 
@@ -317,7 +318,7 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.9`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.10`
         };
     };
 

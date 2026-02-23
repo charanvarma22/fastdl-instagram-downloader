@@ -63,7 +63,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.9-ULTRA-HD',
+                version: 'v2.6.10-ULTRA-HD',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
@@ -96,20 +96,20 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
                         const isSquare = Math.abs(1 - ratio) < 0.02;
 
-                        // v2.6.9 RATIO X-FORCE (10x)
+                        // v2.6.10 NON-SQUARE DOMINANCE (10x)
                         let score = area;
                         if (isSquare) {
-                            score *= 0.1; // 90% penalty for potential automated crops
+                            score *= 0.1; // 90% penalty for squares
                         } else {
-                            score *= 10.0; // 10x bonus for ANY non-square (Portrait or Landscape)
+                            score *= 10.0; // 10x bonus for ANY non-square
                         }
-                        if (hasMeta) score *= 1.5;      // Prefer real data over assumptions
+                        if (hasMeta) score *= 1.5;
 
                         console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)} | Tag: ${c.tag}`);
                         return { src: c.src, score, width, height, ratio };
                     });
                     const winner = scored.reduce((prev, current) => (prev.score >= current.score) ? prev : current);
-                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} (${winner.ratio.toFixed(2)})`);
+                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} (${winner.ratio.toFixed(2)}) via v2.6.10`);
                     return { url: winner.src, diag: `${winner.width}x${winner.height} HD` };
                 }
                 return { url: node.display_url || (node.image_versions2?.candidates?.[0]?.url), diag: "fallback" };
