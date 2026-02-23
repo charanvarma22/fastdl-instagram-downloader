@@ -137,16 +137,22 @@ function transformYtDlpResponse(data, shortcode) {
             const targetRatio = topW / (topH || 1);
             const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
-            // v2.6.3 Absolute Portrait Priority
+            // v2.6.6 Landscape Priority
             const scoredItems = candidates.map(c => {
+                const hasMeta = !!(c.width && c.height);
                 const w = c.width || (targetIsSquare ? 1080 : topW) || 1080;
                 const h = c.height || (targetIsSquare ? 1350 : topH) || 1350;
                 const area = w * h;
                 const ratio = w / (h || 1);
-                const isSquare = Math.abs(1 - ratio) < 0.05;
 
-                // 90% penalty for squares, ALWAYS.
-                const score = isSquare ? (area * 0.1) : area;
+                const isSquare = Math.abs(1 - ratio) < 0.05;
+                const isLandscape = ratio > 1.1;
+
+                let score = area;
+                if (isSquare) score *= 0.1;
+                if (isLandscape) score *= 5.0; // Boost original wide photos
+                if (hasMeta) score *= 1.2;
+
                 return { ...c, score, isSquare, ratio, w, h };
             });
 
