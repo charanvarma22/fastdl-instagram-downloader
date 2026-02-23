@@ -63,7 +63,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.7-ULTRA-HD',
+                version: 'v2.6.8-ULTRA-HD',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
