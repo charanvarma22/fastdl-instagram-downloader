@@ -139,7 +139,6 @@ function transformYtDlpResponse(data, shortcode) {
             const scoredItems = candidates.map(c => {
                 const w = c.width || topW;
                 const h = c.height || topH;
-                const area = w * h;
                 const ratio = w / (h || 1);
                 const isSquare = Math.abs(1 - ratio) < 0.05;
 
@@ -147,7 +146,7 @@ function transformYtDlpResponse(data, shortcode) {
                 if (!targetIsSquare && isSquare) penalty = 0.1;
                 if (targetIsSquare && !isSquare) penalty = 0.5;
 
-                const score = area * penalty;
+                const score = (w * h) * penalty;
                 return { ...c, score, isSquare, ratio, w, h };
             });
 
@@ -162,7 +161,7 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.3-ULTRA-HD",
+            version: "v2.5-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 const imgInfo = getBestImg(entry, `carousel_${idx}`);
@@ -183,7 +182,7 @@ function transformYtDlpResponse(data, shortcode) {
 
     return {
         shortcode: shortcode,
-        version: "v2.3-ULTRA-HD",
+        version: "v2.5-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
             candidates: [{ url: imgInfo.url }]
@@ -259,7 +258,7 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
-        version: "v2.3-ULTRA-HD",
+        version: "v2.5-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
@@ -268,34 +267,44 @@ function transformRapidAPIResponse(data, shortcode) {
     };
 
     const getScoredBestImg = (node) => {
+        const topW = node.dimensions?.width || 1080;
+        const topH = node.dimensions?.height || 1080;
+        const targetRatio = topW / (topH || 1);
+        const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
+
         const candidates = [
             ...(node.image_versions2?.candidates || []),
             ...(node.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width, height: r.config_height || r.height })),
             { url: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
         ].filter(r => r && r.url);
 
-        console.log(`\n--- [Selection Logic] Evaluating ${candidates.length} candidates ---`);
+        console.log(`\n--- [Selection Logic v2.5] Evaluating ${candidates.length} candidates ---`);
         const scored = candidates.map((c, idx) => {
-            const w = c.width || 1080;
-            const h = c.height || 1080;
+            const w = c.width || topW;
+            const h = c.height || topH;
             const area = w * h;
             const ratio = w / (h || 1);
             const isSquare = Math.abs(1 - ratio) < 0.05;
-            // 90% penalty for squares
-            const score = isSquare ? (area * 0.1) : area;
 
-            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Square: ${isSquare} | Area: ${area} | Score: ${score.toFixed(0)}`);
+            // v2.5 SMART-RATIO Logic
+            let penalty = 1.0;
+            if (!targetIsSquare && isSquare) penalty = 0.1;
+            if (targetIsSquare && !isSquare) penalty = 0.5;
+
+            const score = area * penalty;
+
+            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Penalty: ${penalty} | Score: ${score.toFixed(0)}`);
             return { ...c, score, isSquare, ratio, w, h };
         });
 
         const winner = scored.length > 0
             ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
-            : { url: node.display_url, w: 0, h: 0, ratio: 1 };
+            : { url: node.display_url, w: topW, h: topH, ratio: targetRatio };
 
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.5`
         };
     };
 
