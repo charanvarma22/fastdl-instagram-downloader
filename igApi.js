@@ -130,19 +130,29 @@ function transformYtDlpResponse(data, shortcode) {
         }
 
         if (candidates.length > 0) {
-            // Aggressive Anti-Square Scoring: Area * 0.1 for squares
+            const topW = item.width || item.thumbnails?.[0]?.width || 1080;
+            const topH = item.height || item.thumbnails?.[0]?.height || 1080;
+            const targetRatio = topW / (topH || 1);
+            const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
+
+            // Aggressive Anti-Square v2.5
             const scoredItems = candidates.map(c => {
-                const w = c.width || 1080;
-                const h = c.height || 1080;
+                const w = c.width || topW;
+                const h = c.height || topH;
                 const area = w * h;
                 const ratio = w / (h || 1);
                 const isSquare = Math.abs(1 - ratio) < 0.05;
-                const score = isSquare ? (area * 0.1) : area;
+
+                let penalty = 1.0;
+                if (!targetIsSquare && isSquare) penalty = 0.1;
+                if (targetIsSquare && !isSquare) penalty = 0.5;
+
+                const score = area * penalty;
                 return { ...c, score, isSquare, ratio, w, h };
             });
 
             const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
-            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp`;
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.5`;
             return { url: winner.url, diagnostics: diag };
         }
 
