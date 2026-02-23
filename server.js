@@ -201,7 +201,9 @@ app.post("/api/download", async (req, res) => {
 // STATIC ASSETS
 // ============================================
 // Health Check
-app.get("/health", (req, res) => res.json({ status: "ok", version: "v2.5-ULTRA-HD" }));
+app.get("/health", (req, res) => res.json({
+  status: "ok", version: "v2.6-ULTRA-HD",
+}));
 
 // Frontend Catch-all (Serve index.html for any non-API routes)
 app.use(express.static(path.join(__dirname, "dist")));

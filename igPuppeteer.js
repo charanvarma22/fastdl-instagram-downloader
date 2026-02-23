@@ -145,17 +145,23 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
             };
 
             const getBestImage = (node) => {
-                if (node.display_resources && node.display_resources.length > 0) {
-                    const scored = node.display_resources.map((r, idx) => {
-                        const width = r.config_width || 0;
-                        const height = r.config_height || 0;
+                const candidates = [
+                    ...(node.display_resources || []).map(r => ({ src: r.src, width: r.config_width, height: r.config_height })),
+                    { src: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
+                ].filter(c => c.src);
+
+                if (candidates.length > 0) {
+                    const scored = candidates.map((c, idx) => {
+                        const width = c.width || 1080;
+                        const height = c.height || 1350; // Assume portrait if unknown
                         const area = width * height;
                         const ratio = width / (height || 1);
                         const isSquare = Math.abs(1 - ratio) < 0.05;
-                        // Aggressive 90% penalty for squares
+
+                        // Absolute Penalty v2.6.2
                         const score = isSquare ? (area * 0.1) : area;
                         console.log(`[Puppeteer_C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
-                        return { src: r.src, score, width, height, isSquare };
+                        return { src: c.src, score, width, height, isSquare };
                     });
                     const winner = scored.reduce((prev, current) => (prev.score > current.score) ? prev : current);
                     console.log(`🏆 [Puppeteer_WINNER] ${winner.width}x${winner.height} (Score: ${winner.score.toFixed(0)})`);

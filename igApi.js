@@ -137,10 +137,10 @@ function transformYtDlpResponse(data, shortcode) {
             const targetRatio = topW / (topH || 1);
             const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
-            // Absolute Anti-Square v2.6
+            // Universal Anti-Square v2.6.2
             const scoredItems = candidates.map(c => {
-                const w = c.width || topW;
-                const h = c.height || topH;
+                const w = c.width || topW || 1080;
+                const h = c.height || topH || 1350; // Assume portrait if missing
                 const area = w * h;
                 const ratio = w / (h || 1);
                 const isSquare = Math.abs(1 - ratio) < 0.05;
@@ -282,11 +282,11 @@ function transformRapidAPIResponse(data, shortcode) {
 
         console.log(`\n--- [Selection Logic v2.5] Evaluating ${candidates.length} candidates ---`);
         const scored = candidates.map((c, idx) => {
-            const w = c.width || topW;
-            const h = c.height || topH;
+            const w = c.width || topW || 1080;
+            const h = c.height || topH || 1350;
             const area = w * h;
             const ratio = w / (h || 1);
-            // v2.6 Absolute Penalty
+            // v2.6.2 Absolute Penalty
             const isSquare = Math.abs(1 - ratio) < 0.05;
             const score = isSquare ? (area * 0.1) : area;
 
@@ -301,7 +301,7 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.2`
         };
     };
 
