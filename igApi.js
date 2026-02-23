@@ -130,34 +130,37 @@ function transformYtDlpResponse(data, shortcode) {
         }
 
         if (candidates.length > 0) {
-            // Square-Proof Scoring: Area - (Penalty if perfect square)
-            const scored = candidates.map(c => {
-                const area = (c.width || 1) * (c.height || 1);
-                const ratio = (c.width || 1) / (c.height || 1);
+            // Aggressive Anti-Square Scoring: Area * 0.1 for squares
+            const scoredItems = candidates.map(c => {
+                const w = c.width || 1080;
+                const h = c.height || 1080;
+                const area = w * h;
+                const ratio = w / (h || 1);
                 const isSquare = Math.abs(1 - ratio) < 0.05;
-                // Penalize squares by 50% if they compete with high-res originals
-                const score = isSquare ? (area * 0.5) : area;
-                return { ...c, score, isSquare, ratio };
+                const score = isSquare ? (area * 0.1) : area;
+                return { ...c, score, isSquare, ratio, w, h };
             });
 
-            const winner = scored.reduce((a, b) => (a.score >= b.score ? a : b));
-            console.log(`📸 [HD_DEBUG] ${type} | Final Selection: ${winner.width}x${winner.height} (Ratio: ${winner.ratio.toFixed(2)}) | Score: ${winner.score} | Source: ${winner.source}`);
-            return winner.url;
+            const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp`;
+            return { url: winner.url, diagnostics: diag };
         }
 
-        return item.url || item.thumbnail;
+        return { url: item.url || item.thumbnail, diagnostics: "fallback_static" };
     };
 
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.2-ULTRA-HD",
+            version: "v2.3-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
+                const imgInfo = getBestImg(entry, `carousel_${idx}`);
                 return {
                     video_versions: isEntryVid ? [{ url: entry.url }] : [],
-                    image_versions2: { candidates: [{ url: getBestImg(entry, `carousel_${idx}`) }] },
-                    type: isEntryVid ? "video" : "image"
+                    image_versions2: { candidates: [{ url: imgInfo.url }] },
+                    type: isEntryVid ? "video" : "image",
+                    diagnostics: imgInfo.diagnostics
                 };
             }),
             video_versions: [],
@@ -166,16 +169,18 @@ function transformYtDlpResponse(data, shortcode) {
     }
 
     const isVideo = (data.vcodec && data.vcodec !== 'none') || (data.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(data.ext.toLowerCase()));
+    const imgInfo = getBestImg(data, "single");
 
     return {
         shortcode: shortcode,
-        version: "v2.2-ULTRA-HD",
+        version: "v2.3-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
-            candidates: [{ url: getBestImg(data, "single") }]
+            candidates: [{ url: imgInfo.url }]
         },
         type: isVideo ? "video" : "image",
-        carousel_media: []
+        carousel_media: [],
+        diagnostics: imgInfo.diagnostics
     };
 }
 
@@ -235,7 +240,6 @@ async function fetchViaRapidAPI(shortcode) {
 }
 
 function transformRapidAPIResponse(data, shortcode) {
-    // Dig for the item in various possible response structures
     const item = data.item || data.items?.[0] || data.data?.[0] || data.data || data;
 
     if (!item || (!item.image_versions2 && !item.video_versions && !item.display_url)) {
@@ -245,64 +249,67 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
-        version: "v2.2-ULTRA-HD",
+        version: "v2.3-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
-        carousel_media: []
+        carousel_media: [],
+        diagnostics: "RapidAPI Selection"
+    };
+
+    const getScoredBestImg = (node) => {
+        const candidates = [
+            ...(node.image_versions2?.candidates || []),
+            ...(node.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width, height: r.config_height || r.height })),
+            { url: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
+        ].filter(r => r && r.url);
+
+        const scored = candidates.map(c => {
+            const w = c.width || 1080;
+            const h = c.height || 1080;
+            const area = w * h;
+            const ratio = w / (h || 1);
+            const isSquare = Math.abs(1 - ratio) < 0.05;
+            // 90% penalty for squares
+            const score = isSquare ? (area * 0.1) : area;
+            return { ...c, score, isSquare, ratio, w, h };
+        });
+
+        const winner = scored.length > 0
+            ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
+            : { url: node.display_url, w: 0, h: 0, ratio: 1 };
+
+        return {
+            url: winner.url,
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI`
+        };
     };
 
     const carouselArr = item.carousel_media || item.edge_sidecar_to_children?.edges;
     if (carouselArr && carouselArr.length > 0) {
         result.carousel_media = carouselArr.map(c => {
             const node = c.node || c;
+            const imgInfo = getScoredBestImg(node);
 
-            // Collect all image versions
-            const imgCandidates = [
-                ...(node.image_versions2?.candidates || []),
-                ...(node.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width, height: r.config_height || r.height })),
-                { url: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
-            ].filter(r => r && r.url);
-
-            // Area + Square-Proof selection
-            const scored = imgCandidates.map(c => {
-                const area = (c.width || 1) * (c.height || 1);
-                const ratio = (c.width || 1) / (c.height || 1);
-                const isSquare = Math.abs(1 - ratio) < 0.05;
-                const score = isSquare ? (area * 0.5) : area;
-                return { ...c, score, isSquare, ratio };
-            });
-
-            const winner = scored.length > 0
-                ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
-                : { url: node.display_url, width: 0, height: 0, ratio: 1 };
-
-            console.log(`📸 [RapidAPI] Carousel Item | Selection: ${winner.width}x${winner.height} (Ratio: ${winner.ratio.toFixed(2)}) | Score: ${winner.score}`);
-            const bestImg = winner.url;
-
-            // Collect all video versions
             const vidCandidates = [
                 ...(node.video_versions || []),
                 { url: node.video_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
             ].filter(v => v && v.url);
 
             const bestVid = vidCandidates.length > 0
-                ? vidCandidates.reduce((a, b) => {
-                    const resA = (a.width || 0) * (a.height || 0);
-                    const resB = (b.width || 0) * (b.height || 0);
-                    return resA > resB ? a : b;
-                }).url
+                ? vidCandidates.reduce((a, b) => ((a.width * a.height) >= (b.width * b.height) ? a : b)).url
                 : node.video_url;
 
             return {
-                image_versions2: { candidates: [{ url: bestImg }] },
+                image_versions2: { candidates: [{ url: imgInfo.url }] },
                 video_versions: bestVid ? [{ url: bestVid }] : [],
-                type: (bestVid || node.is_video || node.media_type === 2) ? "video" : "image"
+                type: (bestVid || node.is_video || node.media_type === 2) ? "video" : "image",
+                diagnostics: imgInfo.diag
             };
         });
     }
 
-    // Unified selection for single media
+    // Single media handling
     const vidCandidates = [
         ...(item.video_versions || []),
         { url: item.video_url, width: item.dimensions?.width || 0, height: item.dimensions?.height || 0 }
@@ -313,41 +320,16 @@ function transformRapidAPIResponse(data, shortcode) {
     if (isVideo) {
         result.media_type = 2;
         const bestVid = vidCandidates.length > 0
-            ? vidCandidates.reduce((a, b) => {
-                const resA = (a.width || 0) * (a.height || 0);
-                const resB = (b.width || 0) * (b.height || 0);
-                return resA > resB ? a : b;
-            }).url
+            ? vidCandidates.reduce((a, b) => ((a.width * a.height) >= (b.width * b.height) ? a : b)).url
             : item.video_url;
         if (bestVid) result.video_versions.push({ url: bestVid });
     }
 
-    const imgCandidates = [
-        ...(item.image_versions2?.candidates || []),
-        ...(item.display_resources || []).map(r => ({ url: r.src || r.url, width: r.config_width || r.width, height: r.config_height || r.height })),
-        { url: item.display_url, width: item.dimensions?.width || 0, height: item.dimensions?.height || 0 }
-    ].filter(r => r && r.url);
-
-    const scored = imgCandidates.map(c => {
-        const area = (c.width || 1) * (c.height || 1);
-        const ratio = (c.width || 1) / (c.height || 1);
-        const isSquare = Math.abs(1 - ratio) < 0.05;
-        const score = isSquare ? (area * 0.5) : area;
-        return { ...c, score, isSquare, ratio };
-    });
-
-    const winner = scored.length > 0
-        ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
-        : { url: (item.display_url || item.thumbnail_url), width: 0, height: 0, ratio: 1 };
-
-    console.log(`📸 [RapidAPI] Single Item | Selection: ${winner.width}x${winner.height} (Ratio: ${winner.ratio.toFixed(2)}) | Score: ${winner.score}`);
-    const bestImg = winner.url;
-
-    if (bestImg) {
-        result.image_versions2.candidates.push({ url: bestImg });
+    const imgInfo = getScoredBestImg(item);
+    if (imgInfo.url) {
+        result.image_versions2.candidates.push({ url: imgInfo.url });
     }
-
-    // Set top-level type for server preview logic
+    result.diagnostics = imgInfo.diag;
     result.type = isVideo ? "video" : "image";
 
     return result;

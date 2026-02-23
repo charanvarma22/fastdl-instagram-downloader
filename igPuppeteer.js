@@ -152,7 +152,8 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                         const area = width * height;
                         const ratio = width / (height || 1);
                         const isSquare = Math.abs(1 - ratio) < 0.05;
-                        const score = isSquare ? (area * 0.5) : area;
+                        // Aggressive 90% penalty for squares
+                        const score = isSquare ? (area * 0.1) : area;
                         return { src: r.src, score, width, height, isSquare };
                     });
                     const winner = scored.reduce((prev, current) => (prev.score > current.score) ? prev : current);
