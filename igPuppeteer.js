@@ -58,14 +58,12 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
         // Extract deep JSON data
         const data = await page.evaluate(() => {
-            const getMeta = (prop) => document.querySelector(`meta[property="${prop}"]`)?.content;
-
             const result = {
                 id: 'puppeteer_' + Date.now(),
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.5-ULTRA-HD',
+                version: 'v2.6.7-ULTRA-HD',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
@@ -73,10 +71,11 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 diagnostics: 'Puppeteer Selection'
             };
 
-            const getBestImage = (node) => {
+            const getBestImage = (node, label = "unnamed") => {
                 const candidates = [
-                    ...(node.display_resources || []).map(r => ({ src: r.src, width: r.config_width || r.width, height: r.config_height || r.height })),
-                    { src: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
+                    ...(node.image_versions2?.candidates || []).map(c => ({ src: c.url || c.src, width: c.width, height: c.height, tag: 'v2' })),
+                    ...(node.display_resources || []).map(r => ({ src: r.src, width: r.config_width || r.width, height: r.config_height || r.height, tag: 'res' })),
+                    { src: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0, tag: 'display' }
                 ].filter(c => c.src);
 
                 if (candidates.length > 0) {
@@ -86,29 +85,35 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
                     const scored = candidates.map((c, idx) => {
-                        // v2.6.5 Portrait Priority Default
-                        // If metadata is square (or missing), we assume the original is portrait (1080x1350) 
-                        // to ensure it beats any square crop candidate.
+                        const hasMeta = !!(c.width && c.height);
+                        // v2.6.7 Assumption Logic:
+                        // If no metadata, we assume it's PORTRAIT (1080x1350) 
+                        // so it loses points to actual landscape originals.
                         const width = c.width || (targetIsSquare ? 1080 : topW) || 1080;
                         const height = c.height || (targetIsSquare ? 1350 : topH) || 1350;
                         const area = width * height;
                         const ratio = width / (height || 1);
-                        const isSquare = Math.abs(1 - ratio) < 0.05;
 
-                        // Absolute Penalty v2.6.5
-                        const score = isSquare ? (area * 0.1) : area;
-                        console.log(`[C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
-                        return { src: c.src, score, width, height, isSquare, ratio };
+                        const isSquare = Math.abs(1 - ratio) < 0.05;
+                        const isLandscape = ratio > 1.1;
+
+                        // v2.6.7 LANDSCAPE X-FORCE (10x)
+                        let score = area;
+                        if (isSquare) score *= 0.1;
+                        if (isLandscape) score *= 10.0; // Definitive Landscape Win
+                        if (hasMeta) score *= 1.5;      // Prefer real data over assumptions
+
+                        console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)} | Tag: ${c.tag}`);
+                        return { src: c.src, score, width, height, ratio };
                     });
                     const winner = scored.reduce((prev, current) => (prev.score >= current.score) ? prev : current);
-                    console.log(`🏆 [WINNER] ${winner.width}x${winner.height} (Score: ${winner.score.toFixed(0)})`);
-                    return { url: winner.src, diag: `${winner.width}x${winner.height} (${winner.ratio.toFixed(2)})` };
+                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} (${winner.ratio.toFixed(2)})`);
+                    return { url: winner.src, diag: `${winner.width}x${winner.height} HD` };
                 }
-                const fallbackUrl = node.display_url || node.image_versions2?.candidates?.[0]?.url;
-                return { url: fallbackUrl, diag: "fallback" };
+                return { url: node.display_url || (node.image_versions2?.candidates?.[0]?.url), diag: "fallback" };
             };
 
-            // Attempt to find the deep JSON data
+            // Deep Scan for JSON
             let mediaData = null;
             try {
                 if (window.__additionalDataLoaded) {
@@ -142,19 +147,19 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
             if (mediaData) {
                 result.shortcode = mediaData.shortcode || mediaData.code;
-                const isVideo = !!(mediaData.is_video || mediaData.video_url || mediaData.video_versions?.length > 0);
+                const isVideo = !!(mediaData.is_video || (mediaData.media_type === 2) || mediaData.video_url || mediaData.video_versions?.length > 0);
+
                 result.media_type = isVideo ? 2 : 1;
                 result.type = isVideo ? "video" : "image";
-                result.diagnostics = `Puppeteer Selection (${isVideo ? 'Video' : 'Image'})`;
 
                 // Handle Carousel
                 const children = mediaData.edge_sidecar_to_children?.edges || mediaData.carousel_media;
                 if (children && children.length > 0) {
                     result.type = "carousel";
-                    result.carousel_media = children.map(edge => {
+                    result.carousel_media = children.map((edge, idx) => {
                         const node = edge.node || edge;
-                        const isNodeVideo = !!(node.is_video || node.video_url || node.video_versions?.length > 0);
-                        const imgInfo = getBestImage(node);
+                        const isNodeVideo = !!(node.is_video || node.media_type === 2 || node.video_url || node.video_versions?.length > 0);
+                        const imgInfo = getBestImage(node, `item_${idx}`);
                         return {
                             video_versions: isNodeVideo ? [{ url: node.video_url || node.video_versions?.[0]?.url }] : [],
                             image_versions2: { candidates: [{ url: imgInfo.url }] },
@@ -165,16 +170,18 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 } else {
                     // Single
                     if (isVideo) {
-                        result.video_versions.push({ url: mediaData.video_url || mediaData.video_versions?.[0]?.url });
+                        const videoUrl = mediaData.video_url || mediaData.video_versions?.[0]?.url;
+                        if (videoUrl) result.video_versions.push({ url: videoUrl });
                     }
-                    const imgInfo = getBestImage(mediaData);
+                    const imgInfo = getBestImage(mediaData, "single");
                     if (imgInfo.url) result.image_versions2.candidates.push({ url: imgInfo.url });
-                    result.diagnostics = `Puppeteer ${imgInfo.diag}`;
+                    result.diagnostics = `Puppeteer ${imgInfo.diag} (${isVideo ? 'Video' : 'Image'})`;
                 }
             }
 
-            // Fallback check Meta if still empty
+            // Global Meta Fallback
             if (result.image_versions2.candidates.length === 0 && result.video_versions.length === 0 && result.carousel_media.length === 0) {
+                const getMeta = (prop) => document.querySelector(`meta[property="${prop}"]`)?.content;
                 const ogImg = getMeta('og:image');
                 if (ogImg) result.image_versions2.candidates.push({ url: ogImg });
                 const ogVid = getMeta('og:video');
