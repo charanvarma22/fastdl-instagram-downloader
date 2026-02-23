@@ -151,14 +151,20 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 ].filter(c => c.src);
 
                 if (candidates.length > 0) {
+                    const topW = node.dimensions?.width || 1080;
+                    const topH = node.dimensions?.height || 1080;
+                    const targetRatio = topW / (topH || 1);
+                    const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
+
                     const scored = candidates.map((c, idx) => {
-                        const width = c.width || 1080;
-                        const height = c.height || 1350; // Assume portrait if unknown
+                        // v2.6.3 Portrait Priority Default
+                        const width = c.width || (targetIsSquare ? 1080 : topW) || 1080;
+                        const height = c.height || (targetIsSquare ? 1350 : topH) || 1350;
                         const area = width * height;
                         const ratio = width / (height || 1);
                         const isSquare = Math.abs(1 - ratio) < 0.05;
 
-                        // Absolute Penalty v2.6.2
+                        // Absolute Penalty v2.6.3
                         const score = isSquare ? (area * 0.1) : area;
                         console.log(`[Puppeteer_C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
                         return { src: c.src, score, width, height, isSquare };
