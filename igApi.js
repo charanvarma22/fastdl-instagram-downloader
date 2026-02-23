@@ -162,7 +162,7 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.5.3-ULTRA-HD",
+            version: "v2.6-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 const imgInfo = getBestImg(entry, `carousel_${idx}`);
@@ -281,12 +281,18 @@ function transformRapidAPIResponse(data, shortcode) {
         ].filter(r => r && r.url);
 
         console.log(`\n--- [Selection Logic v2.5] Evaluating ${candidates.length} candidates ---`);
-        // v2.6 Absolute Penalty
-        const isSquare = Math.abs(1 - ratio) < 0.05;
-        const score = isSquare ? (area * 0.1) : area;
+        const scored = candidates.map((c, idx) => {
+            const w = c.width || topW;
+            const h = c.height || topH;
+            const area = w * h;
+            const ratio = w / (h || 1);
+            // v2.6 Absolute Penalty
+            const isSquare = Math.abs(1 - ratio) < 0.05;
+            const score = isSquare ? (area * 0.1) : area;
 
-        console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
-        return { ...c, score, isSquare, ratio, w, h };
+            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
+            return { ...c, score, isSquare, ratio, w, h };
+        });
 
         const winner = scored.length > 0
             ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
