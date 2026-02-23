@@ -202,7 +202,7 @@ app.post("/api/download", async (req, res) => {
 // ============================================
 // Health Check
 app.get("/health", (req, res) => res.json({
-  status: "ok", version: "v2.6.3-ULTRA-HD",
+  status: "ok", version: "v2.6.5-ULTRA-HD",
 }));
 
 // Frontend Catch-all (Serve index.html for any non-API routes)

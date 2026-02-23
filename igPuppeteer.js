@@ -46,6 +46,9 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
             }
         }
 
+        // Pipe browser console to node console
+        page.on('console', msg => console.log(`[Puppeteer Browser] ${msg.text()}`));
+
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         // Wait for page to settle
@@ -53,100 +56,26 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
         let content = await page.content();
 
-        // Detect login wall early
-        if (content.includes("Login • Instagram") || content.includes("Welcome back to Instagram") || page.url().includes("/accounts/login")) {
-            console.log("[Puppeteer] Login wall detected. Attempting automated login...");
-
-            if (process.env.IG_USERNAME && process.env.IG_PASSWORD) {
-                try {
-                    await attemptLogin(page, process.env.IG_USERNAME, process.env.IG_PASSWORD);
-                    // After login, go back to the media URL
-                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-                    await new Promise(r => setTimeout(r, 4000));
-                    content = await page.content();
-                } catch (loginErr) {
-                    console.error("[Puppeteer] Automated login failed:", loginErr.message);
-                    throw loginErr;
-                }
-            } else {
-                throw new Error("LOGIN_REQUIRED_NO_CREDENTIALS");
-            }
-        }
-
-        // Try to bypass common blockers (Cookie banners, login popups)
-        try {
-            await page.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                const allowAll = buttons.find(b => b.innerText.includes('Allow all cookies') || b.innerText.includes('Allow essential'));
-                if (allowAll) allowAll.click();
-
-                const notNow = buttons.find(b => b.innerText.includes('Not Now'));
-                if (notNow) notNow.click();
-            });
-            await new Promise(r => setTimeout(r, 1000));
-        } catch (e) { }
-
         // Extract deep JSON data
         const data = await page.evaluate(() => {
             const getMeta = (prop) => document.querySelector(`meta[property="${prop}"]`)?.content;
-
-            // Attempt to find the deep JSON data
-            let mediaData = null;
-
-            // 1. Check window.__additionalDataLoaded
-            try {
-                if (window.__additionalDataLoaded) {
-                    for (const key in window.__additionalDataLoaded) {
-                        const item = window.__additionalDataLoaded[key]?.graphql?.shortcode_media || window.__additionalDataLoaded[key]?.items?.[0];
-                        if (item) {
-                            mediaData = item;
-                            break;
-                        }
-                    }
-                }
-            } catch (e) { }
-
-            // 2. Check window._sharedData
-            if (!mediaData && window._sharedData?.entry_data?.PostPage?.[0]?.graphql?.shortcode_media) {
-                mediaData = window._sharedData.entry_data.PostPage[0].graphql.shortcode_media;
-            }
-
-            // 3. Scan script tags for xdt_api JSON
-            if (!mediaData) {
-                const scripts = Array.from(document.querySelectorAll('script'));
-                for (const s of scripts) {
-                    if (s.innerText.includes('shortcode_media') || s.innerText.includes('xdt_api')) {
-                        try {
-                            const matches = s.innerText.match(/\{"xdt_api.*?\}/g) || s.innerText.match(/\{"graphql".*?\}/g);
-                            if (matches) {
-                                for (const match of matches) {
-                                    const parsed = JSON.parse(match);
-                                    const item = parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || parsed?.graphql?.shortcode_media;
-                                    if (item) {
-                                        mediaData = item;
-                                        break;
-                                    }
-                                }
-                            }
-                        } catch (e) { }
-                    }
-                    if (mediaData) break;
-                }
-            }
 
             const result = {
                 id: 'puppeteer_' + Date.now(),
                 shortcode: '',
                 media_type: 1,
+                type: 'image',
+                version: 'v2.6.5-ULTRA-HD',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
-                derived_from_html: true
+                derived_from_html: true,
+                diagnostics: 'Puppeteer Selection'
             };
 
             const getBestImage = (node) => {
                 const candidates = [
-                    ...(node.display_resources || []).map(r => ({ src: r.src, width: r.config_width, height: r.config_height })),
+                    ...(node.display_resources || []).map(r => ({ src: r.src, width: r.config_width || r.width, height: r.config_height || r.height })),
                     { src: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
                 ].filter(c => c.src);
 
@@ -157,62 +86,101 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
                     const scored = candidates.map((c, idx) => {
-                        // v2.6.3 Portrait Priority Default
+                        // v2.6.5 Portrait Priority Default
+                        // If metadata is square (or missing), we assume the original is portrait (1080x1350) 
+                        // to ensure it beats any square crop candidate.
                         const width = c.width || (targetIsSquare ? 1080 : topW) || 1080;
                         const height = c.height || (targetIsSquare ? 1350 : topH) || 1350;
                         const area = width * height;
                         const ratio = width / (height || 1);
                         const isSquare = Math.abs(1 - ratio) < 0.05;
 
-                        // Absolute Penalty v2.6.3
+                        // Absolute Penalty v2.6.5
                         const score = isSquare ? (area * 0.1) : area;
-                        console.log(`[Puppeteer_C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
-                        return { src: c.src, score, width, height, isSquare };
+                        console.log(`[C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
+                        return { src: c.src, score, width, height, isSquare, ratio };
                     });
-                    const winner = scored.reduce((prev, current) => (prev.score > current.score) ? prev : current);
-                    console.log(`🏆 [Puppeteer_WINNER] ${winner.width}x${winner.height} (Score: ${winner.score.toFixed(0)})`);
-                    return winner.src;
+                    const winner = scored.reduce((prev, current) => (prev.score >= current.score) ? prev : current);
+                    console.log(`🏆 [WINNER] ${winner.width}x${winner.height} (Score: ${winner.score.toFixed(0)})`);
+                    return { url: winner.src, diag: `${winner.width}x${winner.height} (${winner.ratio.toFixed(2)})` };
                 }
-                return node.display_url || node.image_versions2?.candidates?.[0]?.url;
+                const fallbackUrl = node.display_url || node.image_versions2?.candidates?.[0]?.url;
+                return { url: fallbackUrl, diag: "fallback" };
             };
+
+            // Attempt to find the deep JSON data
+            let mediaData = null;
+            try {
+                if (window.__additionalDataLoaded) {
+                    for (const key in window.__additionalDataLoaded) {
+                        const item = window.__additionalDataLoaded[key]?.graphql?.shortcode_media || window.__additionalDataLoaded[key]?.items?.[0];
+                        if (item) { mediaData = item; break; }
+                    }
+                }
+                if (!mediaData && window._sharedData?.entry_data?.PostPage?.[0]?.graphql?.shortcode_media) {
+                    mediaData = window._sharedData.entry_data.PostPage[0].graphql.shortcode_media;
+                }
+                if (!mediaData) {
+                    const scripts = Array.from(document.querySelectorAll('script'));
+                    for (const s of scripts) {
+                        if (s.innerText.includes('shortcode_media') || s.innerText.includes('xdt_api')) {
+                            const matches = s.innerText.match(/\{"xdt_api.*?\}/g) || s.innerText.match(/\{"graphql".*?\}/g);
+                            if (matches) {
+                                for (const match of matches) {
+                                    try {
+                                        const parsed = JSON.parse(match);
+                                        const item = parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || parsed?.graphql?.shortcode_media;
+                                        if (item) { mediaData = item; break; }
+                                    } catch (e) { }
+                                }
+                            }
+                        }
+                        if (mediaData) break;
+                    }
+                }
+            } catch (e) { }
 
             if (mediaData) {
                 result.shortcode = mediaData.shortcode || mediaData.code;
+                const isVideo = !!(mediaData.is_video || mediaData.video_url || mediaData.video_versions?.length > 0);
+                result.media_type = isVideo ? 2 : 1;
+                result.type = isVideo ? "video" : "image";
+                result.diagnostics = `Puppeteer Selection (${isVideo ? 'Video' : 'Image'})`;
 
                 // Handle Carousel
                 const children = mediaData.edge_sidecar_to_children?.edges || mediaData.carousel_media;
                 if (children && children.length > 0) {
+                    result.type = "carousel";
                     result.carousel_media = children.map(edge => {
                         const node = edge.node || edge;
-                        const isNodeVideo = (node.is_video || node.video_versions?.length > 0);
+                        const isNodeVideo = !!(node.is_video || node.video_url || node.video_versions?.length > 0);
+                        const imgInfo = getBestImage(node);
                         return {
                             video_versions: isNodeVideo ? [{ url: node.video_url || node.video_versions?.[0]?.url }] : [],
-                            image_versions2: { candidates: [{ url: getBestImage(node) }] },
-                            type: isNodeVideo ? "video" : "image"
+                            image_versions2: { candidates: [{ url: imgInfo.url }] },
+                            type: isNodeVideo ? "video" : "image",
+                            diagnostics: imgInfo.diag
                         };
                     });
+                } else {
+                    // Single
+                    if (isVideo) {
+                        result.video_versions.push({ url: mediaData.video_url || mediaData.video_versions?.[0]?.url });
+                    }
+                    const imgInfo = getBestImage(mediaData);
+                    if (imgInfo.url) result.image_versions2.candidates.push({ url: imgInfo.url });
+                    result.diagnostics = `Puppeteer ${imgInfo.diag}`;
                 }
-
-                // Handle Single
-                if (mediaData.is_video || mediaData.video_versions?.length > 0) {
-                    result.media_type = 2;
-                    result.video_versions.push({ url: mediaData.video_url || mediaData.video_versions?.[0]?.url });
-                }
-
-                const bestImg = getBestImage(mediaData);
-                if (bestImg) result.image_versions2.candidates.push({ url: bestImg });
-
             }
 
-            // Fallback check Meta
-            if (result.image_versions2.candidates.length === 0) {
+            // Fallback check Meta if still empty
+            if (result.image_versions2.candidates.length === 0 && result.video_versions.length === 0 && result.carousel_media.length === 0) {
                 const ogImg = getMeta('og:image');
                 if (ogImg) result.image_versions2.candidates.push({ url: ogImg });
-            }
-            if (result.video_versions.length === 0) {
                 const ogVid = getMeta('og:video');
                 if (ogVid) {
                     result.media_type = 2;
+                    result.type = "video";
                     result.video_versions.push({ url: ogVid });
                 }
             }
