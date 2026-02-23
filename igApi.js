@@ -137,23 +137,22 @@ function transformYtDlpResponse(data, shortcode) {
             const targetRatio = topW / (topH || 1);
             const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
-            // Aggressive Anti-Square v2.5
+            // Absolute Anti-Square v2.6
             const scoredItems = candidates.map(c => {
                 const w = c.width || topW;
                 const h = c.height || topH;
+                const area = w * h;
                 const ratio = w / (h || 1);
                 const isSquare = Math.abs(1 - ratio) < 0.05;
 
-                let penalty = 1.0;
-                if (!targetIsSquare && isSquare) penalty = 0.1;
-                if (targetIsSquare && !isSquare) penalty = 0.5;
-
-                const score = (w * h) * penalty;
+                // 90% penalty for squares, ALWAYS.
+                const score = isSquare ? (area * 0.1) : area;
                 return { ...c, score, isSquare, ratio, w, h };
             });
 
             const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
-            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.5`;
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6`;
+            console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)})`);
             return { url: winner.url, diagnostics: diag };
         }
 
@@ -282,23 +281,12 @@ function transformRapidAPIResponse(data, shortcode) {
         ].filter(r => r && r.url);
 
         console.log(`\n--- [Selection Logic v2.5] Evaluating ${candidates.length} candidates ---`);
-        const scored = candidates.map((c, idx) => {
-            const w = c.width || topW;
-            const h = c.height || topH;
-            const area = w * h;
-            const ratio = w / (h || 1);
-            const isSquare = Math.abs(1 - ratio) < 0.05;
+        // v2.6 Absolute Penalty
+        const isSquare = Math.abs(1 - ratio) < 0.05;
+        const score = isSquare ? (area * 0.1) : area;
 
-            // v2.5 SMART-RATIO Logic
-            let penalty = 1.0;
-            if (!targetIsSquare && isSquare) penalty = 0.1;
-            if (targetIsSquare && !isSquare) penalty = 0.5;
-
-            const score = area * penalty;
-
-            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Penalty: ${penalty} | Score: ${score.toFixed(0)}`);
-            return { ...c, score, isSquare, ratio, w, h };
-        });
+        console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
+        return { ...c, score, isSquare, ratio, w, h };
 
         const winner = scored.length > 0
             ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
@@ -307,7 +295,7 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.5.3`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6`
         };
     };
 
