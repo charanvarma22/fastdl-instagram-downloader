@@ -282,13 +282,19 @@ function transformRapidAPIResponse(data, shortcode) {
 
         console.log(`\n--- [Selection Logic v2.5] Evaluating ${candidates.length} candidates ---`);
         const scored = candidates.map((c, idx) => {
+            const hasMeta = !!(c.width && c.height);
             const w = c.width || (targetIsSquare ? 1080 : topW) || 1080;
             const h = c.height || (targetIsSquare ? 1350 : topH) || 1350;
             const area = w * h;
             const ratio = w / (h || 1);
-            // v2.6.3 Absolute Penalty
+
             const isSquare = Math.abs(1 - ratio) < 0.05;
-            const score = isSquare ? (area * 0.1) : area;
+            const isLandscape = ratio > 1.1;
+
+            let score = area;
+            if (isSquare) score *= 0.1;
+            if (isLandscape) score *= 5.0; // v2.6.6 Landscape Bonus
+            if (hasMeta) score *= 1.2;
 
             console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
             return { ...c, score, isSquare, ratio, w, h };
