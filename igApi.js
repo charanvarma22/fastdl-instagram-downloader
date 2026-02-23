@@ -71,10 +71,12 @@ export async function fetchMediaByShortcode(shortcode) {
                 } catch (err) {
                     console.error("❌ [yt-dlp] JSON Parse Error:", err.message);
                 }
+            } else {
+                console.warn(`⚠️ [yt-dlp] Failed with code ${code}. Stderr: ${stderrData.substring(0, 200)}`);
             }
 
             // --- FALLBACK CHAIN ---
-            console.warn(`⚠️ [yt-dlp] Failed or empty results. Trying professional fallbacks...`);
+            console.warn(`🔄 [CHAIN] Method 'yt-dlp' failed. Escalating to RapidAPI...`);
 
             // 1. RapidAPI
             if (process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_KEY !== "PASTE_YOUR_KEY_HERE") {
@@ -84,24 +86,24 @@ export async function fetchMediaByShortcode(shortcode) {
                     console.log(`✅ [RapidAPI] Success for ${shortcode}`);
                     return cleanResolve(rapidData);
                 } catch (rapidErr) {
-                    console.warn(`⚠️ [RapidAPI] Failed: ${rapidErr.message}`);
+                    console.warn(`⚠️ [RapidAPI Error] ${rapidErr.message}`);
                 }
             } else {
-                console.log("No valid RAPIDAPI_KEY. Skipping RapidAPI...");
+                console.log("No valid RAPIDAPI_KEY found. Skipping RapidAPI...");
             }
 
             // 2. Puppeteer (Final Attempt)
-            console.log(`🔄 [Puppeteer] Starting deep scraping for ${shortcode}...`);
+            console.log(`🔄 [CHAIN] Method 'RapidAPI' skipped/failed. Escalating to Puppeteer...`);
             try {
                 const puppeteerData = await fetchViaPuppeteer(shortcode);
                 puppeteerData.method = "Puppeteer";
                 console.log(`✅ [Puppeteer] Success for ${shortcode}`);
                 return cleanResolve(puppeteerData);
             } catch (fallbackErr) {
-                console.error(`❌ [ALL METHODS FAILED] for ${shortcode}: ${fallbackErr.message}`);
+                console.error(`❌ [CRITICAL] ALL METHODS FAILED for ${shortcode}. Last Error: ${fallbackErr.message}`);
                 return cleanReject({
                     code: "DOWNLOAD_FAILED",
-                    message: "Failed to fetch media from all available methods.",
+                    message: `Failed to fetch media. Instagram might be blocking us.\n(Tail: ${fallbackErr.message})`,
                     originalError: fallbackErr.message
                 });
             }
@@ -258,7 +260,7 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
-        version: "v2.5-ULTRA-HD",
+        version: "v2.5.1-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
