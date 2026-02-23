@@ -189,7 +189,7 @@ function transformYtDlpResponse(data, shortcode) {
 
     return {
         shortcode: shortcode,
-        version: "v2.6.3-ULTRA-HD",
+        version: "v2.6.6-ULTRA-HD",
         video_versions: isVideo ? [{ url: data.url }] : [],
         image_versions2: {
             candidates: [{ url: imgInfo.url }]
@@ -266,7 +266,7 @@ function transformRapidAPIResponse(data, shortcode) {
 
     const result = {
         shortcode: shortcode,
-        version: "v2.6.3-ULTRA-HD",
+        version: "v2.6.6-ULTRA-HD",
         media_type: item.media_type || 1,
         image_versions2: { candidates: [] },
         video_versions: [],
