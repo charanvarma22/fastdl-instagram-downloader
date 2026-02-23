@@ -137,7 +137,7 @@ function transformYtDlpResponse(data, shortcode) {
             const targetRatio = topW / (topH || 1);
             const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
-            // v2.6.7 Landscape X-Force
+            // v2.6.9 Ratio X-Force (Definitive Anti-Crop)
             const scoredItems = candidates.map(c => {
                 const hasMeta = !!(c.width && c.height);
                 const w = c.width || (targetIsSquare ? 1080 : topW) || 1080;
@@ -145,20 +145,22 @@ function transformYtDlpResponse(data, shortcode) {
                 const area = w * h;
                 const ratio = w / (h || 1);
 
-                const isSquare = Math.abs(1 - ratio) < 0.05;
-                const isLandscape = ratio > 1.1;
+                const isSquare = Math.abs(1 - ratio) < 0.02; // Strict 1:1 check
 
                 let score = area;
-                if (isSquare) score *= 0.1;
-                if (isLandscape) score *= 10.0; // Definitive Landscape Win
-                if (hasMeta) score *= 1.5;      // Prefer real data
+                if (isSquare) {
+                    score *= 0.1; // 90% penalty for potential automated crops
+                } else {
+                    score *= 10.0; // 10x bonus for ANY non-square (Portrait or Landscape)
+                }
+                if (hasMeta) score *= 1.5; // Prefer real data
 
                 return { ...c, score, isSquare, ratio, w, h };
             });
 
             const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
-            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.8`;
-            console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)})`);
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.9`;
+            console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)}) | Ratio: ${winner.ratio.toFixed(2)}`);
             return { url: winner.url, diagnostics: diag };
         }
 
@@ -168,7 +170,7 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.6.8-ULTRA-HD",
+            version: "v2.6.9-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 const imgInfo = getBestImg(entry, `carousel_${idx}`);
@@ -294,12 +296,14 @@ function transformRapidAPIResponse(data, shortcode) {
             const area = w * h;
             const ratio = w / (h || 1);
 
-            const isSquare = Math.abs(1 - ratio) < 0.05;
-            const isLandscape = ratio > 1.1;
+            const isSquare = Math.abs(1 - ratio) < 0.02;
 
             let score = area;
-            if (isSquare) score *= 0.1;
-            if (isLandscape) score *= 10.0; // v2.6.7 Landscape X-Force
+            if (isSquare) {
+                score *= 0.1;
+            } else {
+                score *= 10.0; // v2.6.9 Ratio X-Force
+            }
             if (hasMeta) score *= 1.5;
 
             console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
@@ -313,7 +317,7 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.8`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.9`
         };
     };
 

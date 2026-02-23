@@ -63,7 +63,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.8-ULTRA-HD',
+                version: 'v2.6.9-ULTRA-HD',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
@@ -94,13 +94,15 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                         const area = width * height;
                         const ratio = width / (height || 1);
 
-                        const isSquare = Math.abs(1 - ratio) < 0.05;
-                        const isLandscape = ratio > 1.1;
+                        const isSquare = Math.abs(1 - ratio) < 0.02;
 
-                        // v2.6.7 LANDSCAPE X-FORCE (10x)
+                        // v2.6.9 RATIO X-FORCE (10x)
                         let score = area;
-                        if (isSquare) score *= 0.1;
-                        if (isLandscape) score *= 10.0; // Definitive Landscape Win
+                        if (isSquare) {
+                            score *= 0.1; // 90% penalty for potential automated crops
+                        } else {
+                            score *= 10.0; // 10x bonus for ANY non-square (Portrait or Landscape)
+                        }
                         if (hasMeta) score *= 1.5;      // Prefer real data over assumptions
 
                         console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)} | Tag: ${c.tag}`);
