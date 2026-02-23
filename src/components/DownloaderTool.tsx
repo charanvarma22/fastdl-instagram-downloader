@@ -167,6 +167,13 @@ const DownloaderTool: React.FC<Props> = ({ title, description }) => {
                   >
                     Download {item.type === 'video' ? 'Video' : 'Image'}
                   </button>
+                  {item.diagnostics && (
+                    <div className="mt-3 text-center">
+                      <span className="text-[9px] text-slate-500 font-mono opacity-60">
+                        HD Selection: {item.diagnostics}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

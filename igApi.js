@@ -264,7 +264,8 @@ function transformRapidAPIResponse(data, shortcode) {
             { url: node.display_url, width: node.dimensions?.width || 0, height: node.dimensions?.height || 0 }
         ].filter(r => r && r.url);
 
-        const scored = candidates.map(c => {
+        console.log(`\n--- [Selection Logic] Evaluating ${candidates.length} candidates ---`);
+        const scored = candidates.map((c, idx) => {
             const w = c.width || 1080;
             const h = c.height || 1080;
             const area = w * h;
@@ -272,6 +273,8 @@ function transformRapidAPIResponse(data, shortcode) {
             const isSquare = Math.abs(1 - ratio) < 0.05;
             // 90% penalty for squares
             const score = isSquare ? (area * 0.1) : area;
+
+            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Square: ${isSquare} | Area: ${area} | Score: ${score.toFixed(0)}`);
             return { ...c, score, isSquare, ratio, w, h };
         });
 
@@ -279,6 +282,7 @@ function transformRapidAPIResponse(data, shortcode) {
             ? scored.reduce((a, b) => (a.score >= b.score ? a : b))
             : { url: node.display_url, w: 0, h: 0, ratio: 1 };
 
+        console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
             diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI`

@@ -146,7 +146,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
 
             const getBestImage = (node) => {
                 if (node.display_resources && node.display_resources.length > 0) {
-                    const scored = node.display_resources.map(r => {
+                    const scored = node.display_resources.map((r, idx) => {
                         const width = r.config_width || 0;
                         const height = r.config_height || 0;
                         const area = width * height;
@@ -154,10 +154,11 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                         const isSquare = Math.abs(1 - ratio) < 0.05;
                         // Aggressive 90% penalty for squares
                         const score = isSquare ? (area * 0.1) : area;
+                        console.log(`[Puppeteer_C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
                         return { src: r.src, score, width, height, isSquare };
                     });
                     const winner = scored.reduce((prev, current) => (prev.score > current.score) ? prev : current);
-                    console.log(`[Puppeteer_DEBUG] Winner: ${winner.width}x${winner.height} (Score: ${winner.score}, Square: ${winner.isSquare})`);
+                    console.log(`🏆 [Puppeteer_WINNER] ${winner.width}x${winner.height} (Score: ${winner.score.toFixed(0)})`);
                     return winner.src;
                 }
                 return node.display_url || node.image_versions2?.candidates?.[0]?.url;

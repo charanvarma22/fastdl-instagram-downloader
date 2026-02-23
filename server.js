@@ -110,9 +110,10 @@ app.post("/api/preview", async (req, res) => {
         type: item.type || (item.video_versions?.[0] ? "video" : "image"),
         thumbnail: item.image_versions2?.candidates?.[0]?.url,
         mediaUrl: item.video_versions?.[0]?.url || item.image_versions2?.candidates?.[0]?.url,
+        diagnostics: item.diagnostics, // PER-ITEM DIAGNOSTICS
         shortcode
       }));
-      return res.json({ type: "carousel", items, shortcode });
+      return res.json({ type: "carousel", items, shortcode, version: media.version, diagnostics: media.diagnostics });
     }
 
     // Single Video / Reel Check
@@ -120,6 +121,8 @@ app.post("/api/preview", async (req, res) => {
     if (isReelOrTv || media.type === "video" || media.video_versions?.[0]) {
       return res.json({
         type: "video",
+        version: media.version,
+        diagnostics: media.diagnostics,
         items: [{
           id: 0,
           type: "video",
@@ -136,6 +139,8 @@ app.post("/api/preview", async (req, res) => {
       const imgUrl = media.image_versions2?.candidates?.[0]?.url || media.video_versions?.[0]?.url;
       return res.json({
         type: "image",
+        version: media.version,
+        diagnostics: media.diagnostics,
         items: [{ id: 0, type: "image", thumbnail: imgUrl, mediaUrl: imgUrl, shortcode }],
         shortcode
       });
