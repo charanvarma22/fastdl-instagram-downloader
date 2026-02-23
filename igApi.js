@@ -151,7 +151,7 @@ function transformYtDlpResponse(data, shortcode) {
             });
 
             const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
-            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.5`;
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.6`;
             console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)})`);
             return { url: winner.url, diagnostics: diag };
         }
@@ -162,7 +162,7 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.6.5-ULTRA-HD",
+            version: "v2.6.6-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 const imgInfo = getBestImg(entry, `carousel_${idx}`);
@@ -301,7 +301,7 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.5`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.6`
         };
     };
 
