@@ -63,7 +63,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.12-ULTRA-HD',
+                version: 'v2.6.14-ULTRA-RES',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
@@ -83,33 +83,36 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     const topH = node.dimensions?.height || 1080;
                     const targetRatio = topW / (topH || 1);
 
+                    // v2.6.14: RESOLUTION-FIRST SELECTION
+                    // 1. Sort by area descending
+                    // 2. If areas are similar, pick the one that matches targetRatio best
                     const scored = candidates.map((c, idx) => {
-                        const hasMeta = !!(c.width && c.height);
-                        const width = c.width || topW;
-                        const height = c.height || topH;
+                        const width = c.width || (c.src.includes('1080x1080') ? 1080 : topW);
+                        const height = c.height || (c.src.includes('1080x1080') ? 1080 : topH);
                         const area = width * height;
                         const ratio = width / (height || 1);
-
-                        // v2.6.12: ASPECT RATIO MATCHING
-                        // Instead of penalizing squares blindly, we penalize candidates that deviate from the "top-level" ratio
                         const ratioDiff = Math.abs(ratio - targetRatio);
 
+                        // Base score is area
                         let score = area;
-                        // Massive penalty if ratio is significantly different (e.g. cropped square vs portrait original)
-                        if (ratioDiff > 0.1) {
-                            score *= 0.0001;
-                        } else {
-                            score *= 1000.0; // Bonus for matching ratio
+
+                        // TIE-BREAKER: If it's a square crop (ratio 1.0) but the target isn't square, penalize slightly
+                        // to favor the original ratio at the same resolution.
+                        if (Math.abs(ratio - 1.0) < 0.01 && Math.abs(targetRatio - 1.0) > 0.1) {
+                            score *= 0.8;
                         }
 
-                        if (hasMeta) score *= 2.0;
+                        // Bonus for matching ratio exactly
+                        if (ratioDiff < 0.05) score *= 1.2;
 
-                        console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Target: ${targetRatio.toFixed(2)} | Score: ${score.toFixed(0)} | Tag: ${c.tag}`);
-                        return { src: c.src, score, width, height, ratio };
+                        console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
+                        return { src: c.src, score, width, height, ratio, area };
                     });
+
+                    // Sort by score (Area * Tie-breakers)
                     const winner = scored.reduce((prev, current) => (prev.score >= current.score) ? prev : current);
-                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} (${winner.ratio.toFixed(2)}) via v2.6.12-ULTRA`);
-                    return { url: winner.src, diag: `${winner.width}x${winner.height} (v2.6.12-ULTRA)` };
+                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} via v2.6.14-ULTRA`);
+                    return { url: winner.src, diag: `${winner.width}x${winner.height} (v2.6.14)` };
                 }
                 return { url: node.display_url || (node.image_versions2?.candidates?.[0]?.url), diag: "fallback" };
             };
@@ -131,7 +134,19 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     for (const s of scripts) {
                         const text = s.innerText;
                         if (text.includes('shortcode_media') || text.includes('xdt_api') || text.includes('reels_media') || text.includes('reel_media')) {
-                            // Unified regex for JSON blocks
+                            // Brute force Regex for JSON-like blocks that might contain items
+                            // This looks for anything that starts with "items":[{ and ends with enough closing brackets
+                            const storyItems = text.match(/"items":\s*\[\s*\{.*?\}\s*\]/g);
+                            if (storyItems) {
+                                for (const block of storyItems) {
+                                    try {
+                                        const parsed = JSON.parse(`{${block}}`);
+                                        if (parsed.items?.[0]) { mediaData = parsed.items[0]; break; }
+                                    } catch (e) { }
+                                }
+                            }
+                            if (mediaData) break;
+
                             const blocks = text.match(/\{"(xdt_api|graphql|reels_media|xdt_api__v1__feed__reels_media).*?\}/g);
                             if (blocks) {
                                 for (const match of blocks) {
@@ -142,7 +157,8 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                                             parsed?.reels_media?.[0]?.items?.[0] ||
                                             parsed?.xdt_api__v1__feed__reels_media__reels_media?.[0]?.items?.[0] ||
                                             parsed?.xdt_api__v1__feed__reels_media__reels_media?.items?.[0] ||
-                                            parsed?.reels_media?.items?.[0];
+                                            parsed?.reels_media?.items?.[0] ||
+                                            parsed?.items?.[0]; // Generic items array
                                         if (item) { mediaData = item; break; }
                                     } catch (e) { }
                                 }

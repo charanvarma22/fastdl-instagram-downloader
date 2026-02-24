@@ -210,7 +210,7 @@ app.post("/api/download", async (req, res) => {
 // ============================================
 // Health Check
 app.get("/health", (req, res) => res.json({
-  status: "ok", version: "v2.6.11-BLOG-FIX",
+  status: "ok", version: "v2.6.14-ULTRA",
 }));
 
 // Serve Static Assets (Sitemap, robots.txt, etc.)
