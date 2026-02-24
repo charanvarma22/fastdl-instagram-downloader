@@ -63,7 +63,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.14-ULTRA-RES',
+                version: 'v2.6.15-NUCLEAR',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
@@ -83,36 +83,34 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     const topH = node.dimensions?.height || 1080;
                     const targetRatio = topW / (topH || 1);
 
-                    // v2.6.14: RESOLUTION-FIRST SELECTION
-                    // 1. Sort by area descending
-                    // 2. If areas are similar, pick the one that matches targetRatio best
                     const scored = candidates.map((c, idx) => {
-                        const width = c.width || (c.src.includes('1080x1080') ? 1080 : topW);
-                        const height = c.height || (c.src.includes('1080x1080') ? 1080 : topH);
+                        const width = c.width || topW;
+                        const height = c.height || topH;
                         const area = width * height;
                         const ratio = width / (height || 1);
-                        const ratioDiff = Math.abs(ratio - targetRatio);
 
-                        // Base score is area
                         let score = area;
 
-                        // TIE-BREAKER: If it's a square crop (ratio 1.0) but the target isn't square, penalize slightly
-                        // to favor the original ratio at the same resolution.
-                        if (Math.abs(ratio - 1.0) < 0.01 && Math.abs(targetRatio - 1.0) > 0.1) {
-                            score *= 0.8;
+                        // v2.6.15 NUCLEAR: URL-BASED CROP DETECTION (V-FORCE)
+                        // This detects Instagram's specific square-crop signatures in the CDN URL
+                        const isCropSignature = /[sc]\d+x\d+/.test(c.src) || c.src.includes('/c0.0.') || c.src.includes('/s1080x1080/');
+                        const isSquare = Math.abs(ratio - 1.0) < 0.02;
+
+                        if (isCropSignature) {
+                            score *= 0.001; // 99.9% penalty for detected CROP signatures
+                        } else if (isSquare && Math.abs(targetRatio - 1.0) > 0.1) {
+                            score *= 0.1; // Moderate penalty for square if target is definitely not square
+                        } else {
+                            score *= 1000.0; // Bonus for non-signature files
                         }
 
-                        // Bonus for matching ratio exactly
-                        if (ratioDiff < 0.05) score *= 1.2;
-
-                        console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
-                        return { src: c.src, score, width, height, ratio, area };
+                        console.log(`[${label} C#${idx}] ${width}x${height} | CropSig: ${isCropSignature} | Score: ${score.toFixed(0)}`);
+                        return { src: c.src, score, width, height, ratio };
                     });
 
-                    // Sort by score (Area * Tie-breakers)
                     const winner = scored.reduce((prev, current) => (prev.score >= current.score) ? prev : current);
-                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} via v2.6.14-ULTRA`);
-                    return { url: winner.src, diag: `${winner.width}x${winner.height} (v2.6.14)` };
+                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} via v2.6.15-NUCLEAR`);
+                    return { url: winner.src, diag: `${winner.width}x${winner.height} (v2.6.15)` };
                 }
                 return { url: node.display_url || (node.image_versions2?.candidates?.[0]?.url), diag: "fallback" };
             };
@@ -200,6 +198,24 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     const imgInfo = getBestImage(mediaData, "single");
                     if (imgInfo.url) result.image_versions2.candidates.push({ url: imgInfo.url });
                     result.diagnostics = `Puppeteer ${imgInfo.diag} (${isVideo ? 'Video' : 'Image'})`;
+                }
+            } else {
+                // v2.6.15: DOM-BASED SCRAPER FALLBACK (FOR STORIES)
+                const videos = Array.from(document.querySelectorAll('video'));
+                const images = Array.from(document.querySelectorAll('img[srcset], img[style*="object-fit: cover"]'));
+
+                if (videos.length > 0) {
+                    result.media_type = 2;
+                    result.type = "video";
+                    result.video_versions = [{ url: videos[0].src }];
+                    result.diagnostics = "DOM Scraper (Video)";
+                } else if (images.length > 0) {
+                    // Pick largest image by size if possible
+                    const bestImg = images.reduce((a, b) => (a.naturalWidth * a.naturalHeight >= b.naturalWidth * b.naturalHeight ? a : b));
+                    result.media_type = 1;
+                    result.type = "image";
+                    result.image_versions2.candidates = [{ url: bestImg.src }];
+                    result.diagnostics = "DOM Scraper (Image)";
                 }
             }
 
