@@ -117,7 +117,7 @@ export async function fetchMediaByShortcode(shortcode) {
 }
 
 function transformYtDlpResponse(data, shortcode) {
-    const getBestImg = (item, type = "single") => {
+    const getBestImg = (item, label = "single") => {
         const candidates = [];
         const isActuallyVideo = (item.vcodec && item.vcodec !== 'none') || (item.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(item.ext.toLowerCase()));
 
@@ -132,36 +132,34 @@ function transformYtDlpResponse(data, shortcode) {
         }
 
         if (candidates.length > 0) {
-            const topW = item.width || item.thumbnails?.[0]?.width || 1080;
-            const topH = item.height || item.thumbnails?.[0]?.height || 1080;
-            const targetRatio = topW / (topH || 1);
-            const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
+            const topW = item.width || 1080;
+            const topH = item.height || 1080;
 
-            // v2.6.10 Non-Square Dominance (Final Anti-Crop)
+            // v2.6.12 ULTRA-HD ASPECT MATCH
             const scoredItems = candidates.map((c, idx) => {
                 const hasMeta = !!(c.width && c.height);
-                const w = c.width || (targetIsSquare ? 1080 : topW) || 1080;
-                const h = c.height || (targetIsSquare ? 1350 : topH) || 1350;
+                const w = c.width || topW;
+                const h = c.height || topH;
                 const area = w * h;
                 const ratio = w / (h || 1);
+                const targetRatio = topW / (topH || 1);
 
-                const isSquare = Math.abs(1 - ratio) < 0.02; // Strict 1:1 check
+                const ratioDiff = Math.abs(ratio - targetRatio);
 
                 let score = area;
-                if (isSquare) {
-                    score *= 0.1; // 90% penalty for potential automated crops
+                if (ratioDiff > 0.1) {
+                    score *= 0.0001;
                 } else {
-                    score *= 10.0; // 10x bonus for ANY non-square (Portrait or Landscape)
+                    score *= 1000.0; // Bonus for matching ratio
                 }
-                if (hasMeta) score *= 1.5; // Trust data over guesses
 
-                console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)} | Source: ${c.source || 'uk'}`);
-                return { ...c, score, isSquare, ratio, w, h };
+                if (hasMeta) score *= 2.0;
+
+                return { ...c, score, ratio, w, h };
             });
 
             const winner = scoredItems.reduce((a, b) => (a.score >= b.score ? a : b));
-            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via yt-dlp v2.6.10`;
-            console.log(`🏆 [yt-dlp WINNER] ${winner.w}x${winner.h} (Score: ${winner.score.toFixed(0)})`);
+            const diag = `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via v2.6.12-ULTRA`;
             return { url: winner.url, diagnostics: diag };
         }
 
@@ -171,7 +169,7 @@ function transformYtDlpResponse(data, shortcode) {
     if (data._type === 'playlist' && data.entries) {
         return {
             shortcode: shortcode,
-            version: "v2.6.10-ULTRA-HD",
+            version: "v2.6.12-ULTRA-HD",
             carousel_media: data.entries.map((entry, idx) => {
                 const isEntryVid = (entry.vcodec && entry.vcodec !== 'none') || (entry.ext && ['mp4', 'm4v', 'webm', 'mov'].includes(entry.ext.toLowerCase()));
                 const imgInfo = getBestImg(entry, `carousel_${idx}`);
@@ -292,23 +290,23 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`\n--- [Selection Logic v2.5] Evaluating ${candidates.length} candidates ---`);
         const scored = candidates.map((c, idx) => {
             const hasMeta = !!(c.width && c.height);
-            const w = c.width || (targetIsSquare ? 1080 : topW) || 1080;
-            const h = c.height || (targetIsSquare ? 1350 : topH) || 1350;
+            const w = c.width || topW || 1080;
+            const h = c.height || (targetIsSquare ? w : topH) || 1080;
             const area = w * h;
             const ratio = w / (h || 1);
 
-            const isSquare = Math.abs(1 - ratio) < 0.02;
+            const ratioDiff = Math.abs(ratio - targetRatio);
 
             let score = area;
-            if (isSquare) {
-                score *= 0.1;
+            if (ratioDiff > 0.1) {
+                score *= 0.0001;
             } else {
-                score *= 10.0; // v2.6.10 Non-Square Dominance
+                score *= 1000.0; // Bonus for matching ratio
             }
-            if (hasMeta) score *= 1.5;
+            if (hasMeta) score *= 2.0;
 
-            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)}`);
-            return { ...c, score, isSquare, ratio, w, h };
+            console.log(`[C#${idx}] ${w}x${h} | Ratio: ${ratio.toFixed(2)} | Target: ${targetRatio.toFixed(2)} | Score: ${score.toFixed(0)}`);
+            return { ...c, score, ratio, w, h };
         });
 
         const winner = scored.length > 0
@@ -318,7 +316,7 @@ function transformRapidAPIResponse(data, shortcode) {
         console.log(`🏆 [WINNER] ${winner.w}x${winner.h} (Score: ${winner.score?.toFixed(0)})`);
         return {
             url: winner.url,
-            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.10`
+            diag: `${winner.w}x${winner.h} (${winner.ratio.toFixed(2)}) via RapidAPI v2.6.12-ULTRA`
         };
     };
 

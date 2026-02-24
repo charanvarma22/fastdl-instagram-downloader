@@ -86,10 +86,18 @@ app.post("/api/preview", async (req, res) => {
     // Handle Stories
     if (url.includes("/stories/")) {
       const story = await fetchStoryByUrl(url);
+      const mediaUrl = story.video_versions?.[0]?.url || story.image_versions2?.candidates?.[0]?.url;
       return res.json({
         type: story.type === "video" ? "video" : "image",
-        items: [{ id: 0, type: story.type, thumbnail: story.thumbnail || story.url, mediaUrl: story.url, shortcode: null }],
-        shortcode: null
+        items: [{
+          id: 0,
+          type: story.type,
+          thumbnail: mediaUrl,
+          mediaUrl: mediaUrl,
+          shortcode: null
+        }],
+        shortcode: null,
+        diagnostics: story.diagnostics || "Story Fetch"
       });
     }
 

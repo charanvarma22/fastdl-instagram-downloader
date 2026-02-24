@@ -63,7 +63,7 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 shortcode: '',
                 media_type: 1,
                 type: 'image',
-                version: 'v2.6.10-ULTRA-HD',
+                version: 'v2.6.12-ULTRA-HD',
                 image_versions2: { candidates: [] },
                 video_versions: [],
                 carousel_media: [],
@@ -82,35 +82,34 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                     const topW = node.dimensions?.width || 1080;
                     const topH = node.dimensions?.height || 1080;
                     const targetRatio = topW / (topH || 1);
-                    const targetIsSquare = Math.abs(1 - targetRatio) < 0.05;
 
                     const scored = candidates.map((c, idx) => {
                         const hasMeta = !!(c.width && c.height);
-                        // v2.6.7 Assumption Logic:
-                        // If no metadata, we assume it's PORTRAIT (1080x1350) 
-                        // so it loses points to actual landscape originals.
-                        const width = c.width || (targetIsSquare ? 1080 : topW) || 1080;
-                        const height = c.height || (targetIsSquare ? 1350 : topH) || 1350;
+                        const width = c.width || topW;
+                        const height = c.height || topH;
                         const area = width * height;
                         const ratio = width / (height || 1);
 
-                        const isSquare = Math.abs(1 - ratio) < 0.02;
+                        // v2.6.12: ASPECT RATIO MATCHING
+                        // Instead of penalizing squares blindly, we penalize candidates that deviate from the "top-level" ratio
+                        const ratioDiff = Math.abs(ratio - targetRatio);
 
-                        // v2.6.10 NON-SQUARE DOMINANCE (10x)
                         let score = area;
-                        if (isSquare) {
-                            score *= 0.1; // 90% penalty for squares
+                        // Massive penalty if ratio is significantly different (e.g. cropped square vs portrait original)
+                        if (ratioDiff > 0.1) {
+                            score *= 0.0001;
                         } else {
-                            score *= 10.0; // 10x bonus for ANY non-square
+                            score *= 1000.0; // Bonus for matching ratio
                         }
-                        if (hasMeta) score *= 1.5;
 
-                        console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Score: ${score.toFixed(0)} | Tag: ${c.tag}`);
+                        if (hasMeta) score *= 2.0;
+
+                        console.log(`[${label} C#${idx}] ${width}x${height} | Ratio: ${ratio.toFixed(2)} | Target: ${targetRatio.toFixed(2)} | Score: ${score.toFixed(0)} | Tag: ${c.tag}`);
                         return { src: c.src, score, width, height, ratio };
                     });
                     const winner = scored.reduce((prev, current) => (prev.score >= current.score) ? prev : current);
-                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} (${winner.ratio.toFixed(2)}) via v2.6.10`);
-                    return { url: winner.src, diag: `${winner.width}x${winner.height} HD` };
+                    console.log(`🏆 [${label} WINNER] ${winner.width}x${winner.height} (${winner.ratio.toFixed(2)}) via v2.6.12-ULTRA`);
+                    return { url: winner.src, diag: `${winner.width}x${winner.height} (v2.6.12-ULTRA)` };
                 }
                 return { url: node.display_url || (node.image_versions2?.candidates?.[0]?.url), diag: "fallback" };
             };
@@ -130,13 +129,20 @@ export async function fetchMediaByShortcode(shortcode, fullUrl = null) {
                 if (!mediaData) {
                     const scripts = Array.from(document.querySelectorAll('script'));
                     for (const s of scripts) {
-                        if (s.innerText.includes('shortcode_media') || s.innerText.includes('xdt_api')) {
-                            const matches = s.innerText.match(/\{"xdt_api.*?\}/g) || s.innerText.match(/\{"graphql".*?\}/g);
-                            if (matches) {
-                                for (const match of matches) {
+                        const text = s.innerText;
+                        if (text.includes('shortcode_media') || text.includes('xdt_api') || text.includes('reels_media') || text.includes('reel_media')) {
+                            // Unified regex for JSON blocks
+                            const blocks = text.match(/\{"(xdt_api|graphql|reels_media|xdt_api__v1__feed__reels_media).*?\}/g);
+                            if (blocks) {
+                                for (const match of blocks) {
                                     try {
                                         const parsed = JSON.parse(match);
-                                        const item = parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0] || parsed?.graphql?.shortcode_media;
+                                        const item = parsed?.xdt_api__v1__media__shortcode__web_info?.items?.[0] ||
+                                            parsed?.graphql?.shortcode_media ||
+                                            parsed?.reels_media?.[0]?.items?.[0] ||
+                                            parsed?.xdt_api__v1__feed__reels_media__reels_media?.[0]?.items?.[0] ||
+                                            parsed?.xdt_api__v1__feed__reels_media__reels_media?.items?.[0] ||
+                                            parsed?.reels_media?.items?.[0];
                                         if (item) { mediaData = item; break; }
                                     } catch (e) { }
                                 }
